@@ -11,6 +11,9 @@
 | Unity / Unreal avatar | Read `corvis_avatar.json` at startup; poll `state.json` for expressions |
 | Smart home control | A `HomeBody`-style tool set (Home Assistant REST API) |
 | Better memory recall | Add embeddings next to the SQLite full-text search |
+| Streaming replies | Show Corvis's answer word-by-word in the web app |
+| Sandboxed commands | Run workshop commands inside Docker instead of directly on your machine |
+| More models | Gemini, local models (Ollama) — add a provider in `corvis/providers.py` |
 
 ## Claude add-ons that help build Corvis
 

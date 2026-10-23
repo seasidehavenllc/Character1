@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corvis</title>
+<style>
+:root {
+  --bg: #07090c; --panel: #0d1217; --panel2: #121a21; --line: #1c2a34;
+  --text: #d6e4ea; --dim: #7d929c; --cyan: #00e5ff; --cyan-dim: #00e5ff33; --gold: #c9a227; --red: #ff6b6b;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; }
+
+/* Sidebar */
+aside { width: 280px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--line); padding: 20px 18px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+.brand { font: 600 20px/1 ui-monospace, Menlo, monospace; letter-spacing: 6px; color: var(--cyan); }
+.brand small { display: block; margin-top: 6px; font-size: 10px; letter-spacing: 2px; color: var(--dim); }
+.core { width: 140px; height: 140px; margin: 4px auto 0; position: relative; }
+.core svg { width: 100%; height: 100%; animation: spin 10s linear infinite; filter: drop-shadow(0 0 10px var(--cyan)); }
+.core.thinking svg { animation-duration: 1.6s; }
+.core .visor { position: absolute; left: 28%; right: 28%; top: 48%; height: 4px; border-radius: 4px; background: var(--cyan); opacity: .35; transition: opacity .3s; }
+.core.thinking .visor { opacity: 1; animation: pulse .8s ease-in-out infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 50% { opacity: .3; } }
+.status { text-align: center; font: 12px ui-monospace, Menlo, monospace; color: var(--dim); letter-spacing: 1px; }
+label.field { display: flex; flex-direction: column; gap: 6px; font-size: 11px; letter-spacing: 1.5px; color: var(--dim); text-transform: uppercase; }
+select, textarea, button { font: inherit; color: var(--text); }
+select { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; text-transform: none; letter-spacing: 0; }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text); }
+.toggle small { display: block; color: var(--dim); font-size: 11px; }
+.switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch span { position: absolute; inset: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 24px; cursor: pointer; transition: .2s; }
+.switch span::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: var(--dim); border-radius: 50%; transition: .2s; }
+.switch input:checked + span { background: var(--cyan-dim); border-color: var(--cyan); }
+.switch input:checked + span::before { transform: translateX(18px); background: var(--cyan); }
+.ws { font: 11px ui-monospace, Menlo, monospace; color: var(--dim); word-break: break-all; text-transform: none; letter-spacing: 0; }
+
+/* Main */
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+#model { font-weight: 600; font-size: 15px; border-color: transparent; background: transparent; padding: 6px 8px; cursor: pointer; }
+#model:hover, #model:focus { background: var(--panel2); border-color: var(--line); }
+#modelDesc { color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#menu { display: none; background: none; border: 0; color: var(--text); font-size: 22px; cursor: pointer; }
+
+#log { flex: 1; overflow-y: auto; padding: 24px 20px; }
+.inner { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.msg { display: flex; gap: 12px; }
+.msg .who { width: 30px; height: 30px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center; font: 600 12px ui-monospace, monospace; }
+.msg.user .who { background: var(--panel2); color: var(--dim); }
+.msg.corvis .who { background: var(--cyan-dim); color: var(--cyan); }
+.msg .body { min-width: 0; flex: 1; }
+.msg.user .body { background: var(--panel2); padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; }
+.msg .meta { font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+.msg.error .body { color: var(--red); }
+.events { font: 12px ui-monospace, Menlo, monospace; color: var(--dim); border-left: 2px solid var(--cyan-dim); padding: 2px 0 2px 10px; margin-bottom: 8px; }
+.events div::before { content: "▸ "; color: var(--cyan); }
+.body p { margin: 0 0 10px; }
+.body h1, .body h2, .body h3 { font-size: 16px; margin: 14px 0 6px; }
+.body code { font: 13px ui-monospace, Menlo, monospace; background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+.codeblock { position: relative; margin: 8px 0 12px; }
+.codeblock pre { background: #050709; border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-x: auto; margin: 0; }
+.codeblock pre code { background: none; padding: 0; }
+.codeblock .lang { position: absolute; top: 6px; right: 60px; font-size: 11px; color: var(--dim); }
+.codeblock button { position: absolute; top: 4px; right: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+.welcome { text-align: center; color: var(--dim); margin-top: 12vh; }
+.welcome h2 { color: var(--text); font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+.chips button { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
+.chips button:hover { border-color: var(--cyan); }
+
+form { padding: 12px 20px 18px; }
+.composer { max-width: 820px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 8px 8px 14px; }
+.composer:focus-within { border-color: var(--cyan); }
+textarea { flex: 1; background: none; border: 0; outline: none; resize: none; max-height: 220px; padding: 6px 0; }
+#send { background: var(--cyan); color: #00151a; border: 0; border-radius: 10px; width: 38px; height: 38px; font-size: 18px; font-weight: 700; cursor: pointer; }
+#send:disabled { opacity: .4; cursor: default; }
+.hint { max-width: 820px; margin: 6px auto 0; font-size: 11px; color: var(--dim); text-align: center; }
+
+@media (max-width: 760px) {
+  aside { position: fixed; inset: 0 auto 0 0; z-index: 10; transform: translateX(-100%); transition: transform .2s; }
+  aside.open { transform: none; box-shadow: 0 0 40px #000; }
+  #menu { display: block; }
+  header, #log, form { padding-left: 16px; padding-right: 16px; }
+}
+</style>
+</head>
+<body>
+<aside id="side">
+  <div class="brand">C.O.R.V.I.S.<small>AI COMPANION · ENGINEER</small></div>
+  <div class="core" id="core">
+    <svg viewBox="-50 -50 100 100" fill="none" stroke="#00e5ff" stroke-width="1.4">
+      <polygon points="0,-42 36,-21 36,21 0,42 -36,21 -36,-21"/>
+      <polygon points="0,-42 36,21 -36,21" opacity=".7"/>
+      <polygon points="0,42 -36,-21 36,-21" opacity=".7"/>
+      <circle r="10" fill="#00e5ff" opacity=".85"/>
+    </svg>
+    <div class="visor"></div>
+  </div>
+  <div class="status" id="status">ONLINE</div>
+  <label class="field">Body
+    <select id="bodySel">
+      <option value="avatar">3D avatar</option>
+      <option value="console">Voice only</option>
+      <option value="robot">Robot (simulated)</option>
+    </select>
+  </label>
+  <label class="field">Thinking effort
+    <select id="effort"></select>
+  </label>
+  <div class="toggle">
+    <div>Allow commands<small>Let Corvis run code, tests and installs in his workspace</small></div>
+    <label class="switch"><input type="checkbox" id="allow"><span></span></label>
+  </div>
+  <label class="field">Workspace<div class="ws" id="ws"></div></label>
+</aside>
+
+<main>
+  <header>
+    <button id="menu" aria-label="Menu">☰</button>
+    <select id="model" aria-label="Model"></select>
+    <span id="modelDesc"></span>
+  </header>
+  <div id="log"><div class="inner" id="inner"></div></div>
+  <form id="form">
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Message Corvis…"></textarea>
+      <button id="send" type="submit" aria-label="Send">↑</button>
+    </div>
+    <div class="hint">Enter to send · Shift+Enter for a new line · Switch models any time — the conversation carries over</div>
+  </form>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null, busy = false;
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  return res.json();
+}
+
+function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function inline(s) {
+  return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+function render(md) {
+  const out = [];
+  const parts = md.split(/```/);
+  parts.forEach((part, i) => {
+    if (i % 2 === 1) {
+      const nl = part.indexOf("\n");
+      const lang = nl > -1 ? part.slice(0, nl).trim() : "";
+      const code = nl > -1 ? part.slice(nl + 1) : part;
+      out.push(`<div class="codeblock"><span class="lang">${esc(lang)}</span><button type="button" onclick="copyCode(this)">Copy</button><pre><code>${esc(code.replace(/\n$/, ""))}</code></pre></div>`);
+      return;
+    }
+    part.split(/\n{2,}/).forEach((para) => {
+      if (!para.trim()) return;
+      const h = para.match(/^(#{1,3})\s+(.*)$/);
+      if (h) out.push(`<h3>${inline(h[2])}</h3>`);
+      else out.push(`<p>${para.split("\n").map(inline).join("<br>")}</p>`);
+    });
+  });
+  return out.join("");
+}
+
+window.copyCode = (btn) => {
+  navigator.clipboard.writeText(btn.parentElement.querySelector("code").textContent);
+  btn.textContent = "Copied"; setTimeout(() => (btn.textContent = "Copy"), 1200);
+};
+
+function add(role, text, { events = [], meta = "" } = {}) {
+  $("inner").querySelector(".welcome")?.remove();
+  const el = document.createElement("div");
+  el.className = `msg ${role}`;
+  const who = role === "user" ? "YOU" : "C";
+  let html = meta ? `<div class="meta">${esc(meta)}</div>` : "";
+  if (events.length) html += `<div class="events">${events.map((e) => `<div>${esc(e)}</div>`).join("")}</div>`;
+  html += role === "user" ? esc(text) : render(text);
+  el.innerHTML = `<div class="who">${who}</div><div class="body">${html}</div>`;
+  $("inner").appendChild(el);
+  $("log").scrollTop = $("log").scrollHeight;
+  return el;
+}
+
+function welcome() {
+  $("inner").innerHTML = `<div class="welcome"><h2>Good to see you. What are we building?</h2>
+    <div>Corvis can plan, write, run and debug code in his workspace — in any language.</div>
+    <div class="chips">
+      <button type="button">Build me a to-do web app with a login</button>
+      <button type="button">Make a 2D platformer in Python</button>
+      <button type="button">Write an Arduino sketch for a line-following robot</button>
+      <button type="button">Build yourself in 3D</button>
+    </div></div>`;
+  $("inner").querySelectorAll(".chips button").forEach((b) => b.onclick = () => { $("input").value = b.textContent; send(); });
+}
+
+function applyState(s) {
+  state = s;
+  $("model").innerHTML = "";
+  for (const provider of ["anthropic", "openai"]) {
+    const group = document.createElement("optgroup");
+    group.label = provider === "anthropic" ? "Claude" : "ChatGPT";
+    s.models.filter((m) => m.provider === provider).forEach((m) => group.appendChild(new Option(m.label, m.id)));
+    if (group.children.length) $("model").appendChild(group);
+  }
+  $("model").value = s.model;
+  $("modelDesc").textContent = s.models.find((m) => m.id === s.model)?.description || "";
+  $("effort").innerHTML = s.efforts.map((e) => `<option>${e}</option>`).join("");
+  $("effort").value = s.effort;
+  $("bodySel").value = s.body;
+  $("allow").checked = s.allow_commands;
+  $("ws").textContent = s.workspace;
+}
+
+async function settings(change) { applyState(await api("/api/settings", change)); }
+
+$("model").onchange = (e) => settings({ model: e.target.value });
+$("effort").onchange = (e) => settings({ effort: e.target.value });
+$("bodySel").onchange = (e) => settings({ body: e.target.value });
+$("allow").onchange = (e) => settings({ allow_commands: e.target.checked });
+$("menu").onclick = () => $("side").classList.toggle("open");
+
+function setBusy(on) {
+  busy = on;
+  $("send").disabled = on;
+  $("core").classList.toggle("thinking", on);
+  $("status").textContent = on ? "THINKING…" : "ONLINE";
+}
+
+async function send() {
+  const text = $("input").value.trim();
+  if (!text || busy) return;
+  $("input").value = ""; $("input").style.height = "auto";
+  add("user", text);
+  setBusy(true);
+  try {
+    const r = await api("/api/chat", { message: text });
+    if (r.error) add("error corvis", r.error, { events: r.events });
+    else add("corvis", r.reply, { events: r.events, meta: r.model });
+  } catch (e) {
+    add("error corvis", "Lost connection to the Corvis server.");
+  }
+  setBusy(false);
+}
+
+$("form").onsubmit = (e) => { e.preventDefault(); send(); };
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+$("input").addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; });
+
+(async () => {
+  const s = await api("/api/state");
+  applyState(s);
+  if (!s.transcript.length) welcome();
+  else s.transcript.forEach((t) => add(t.role === "user" ? "user" : "corvis", t.text));
+})();
+</script>
+</body>
+</html>

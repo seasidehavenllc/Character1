@@ -23,7 +23,8 @@ class MemoryStore:
     def __init__(self, path: str | Path = DEFAULT_DB):
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(path))
+        # The web app calls in from worker threads; it serializes access with its own lock.
+        self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.executescript(
             """
             CREATE TABLE IF NOT EXISTS memories (

@@ -1,0 +1,44 @@
+# Models Corvis can think with. Pick one in the web UI dropdown, or with
+# `/model <id>` in the terminal. Add or remove entries freely.
+#
+# provider: anthropic  -> needs ANTHROPIC_API_KEY  (https://console.anthropic.com)
+# provider: openai     -> needs OPENAI_API_KEY     (https://platform.openai.com) and `pip install openai`
+#
+# Options (anthropic only):
+#   fallbacks: true  -> if the model declines a request, the API retries it on a fallback model
+#   web_tools: true  -> Corvis can search the web and read docs pages (needs a model that supports it)
+
+default: claude-opus-5-5
+
+models:
+  - id: claude-opus-5-5
+    label: Claude Opus 5.5
+    provider: anthropic
+    description: Best all-round coder and engineer. Default.
+    fallbacks: true
+    web_tools: true
+
+  - id: claude-fable-5-1
+    label: Claude Fable 5.1
+    provider: anthropic
+    description: Anthropic's most capable model, for the hardest builds. Slower and pricier.
+    fallbacks: true
+
+  - id: claude-sonnet-5-5
+    label: Claude Sonnet 5.5
+    provider: anthropic
+    description: Fast and capable for everyday coding.
+    fallbacks: true
+    web_tools: true
+
+  - id: claude-haiku-5-5
+    label: Claude Haiku 5.5
+    provider: anthropic
+    description: Fastest and cheapest, for quick questions.
+
+  # ChatGPT. OpenAI renames models often: if this ID stops working, replace it
+  # with a current model name from https://platform.openai.com/docs/models
+  - id: gpt-5
+    label: ChatGPT (GPT-5)
+    provider: openai
+    description: OpenAI's model, through the OpenAI API.
