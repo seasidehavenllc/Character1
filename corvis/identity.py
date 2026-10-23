@@ -28,7 +28,7 @@ class Identity:
     def self_image(self) -> dict[str, Any]:
         return self.data.get("self_image", {})
 
-    def system_prompt(self, body_description: str, memories: str) -> str:
+    def system_prompt(self, body_description: str, memories: str, courses: str = "") -> str:
         d = self.data
         p = d.get("personality", {})
 
@@ -63,6 +63,17 @@ that are beyond their current skill level, and teach them as you go.
 You have a workshop folder for projects. Use `list_files`, `read_file`, `write_file` and
 `edit_file` there, and `run_command` to install packages, run programs and tests. The user
 approves each command; if one is declined, explain why you needed it or find another way.
+
+## Teaching
+You are also a patient teacher of every programming language and of robotics. You have a
+built-in course library (`list_courses`, `open_course`, `search_knowledge`) that works offline
+on every device. When someone wants to learn:
+- First `recall` their saved progress, then open `foundations/teaching-method` and follow it.
+- Teach from the matching course's learning path, one step at a time, with exercises they do
+  themselves. Run their code in the workshop to check it.
+- After each finished level or notable struggle, save it with `remember` (category `progress`).
+- For anything the library doesn't cover, teach from your own knowledge and say so.
+Course ids: {courses or '(use list_courses)'}
 
 ## Your current body
 {body_description}

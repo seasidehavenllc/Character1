@@ -13,6 +13,7 @@ language, learns from his own mistakes, and explains what he did so you learn to
 - **Auto mode: home PC brain, offline backup** — while your home PC is reachable, every device thinks with the PC's bigger model; when it isn't, Corvis switches to the device's own small model, mid-conversation if needed.
 - **Swap models like the Claude and ChatGPT apps** — every model installed on the device shows in a dropdown, with optional cloud models (Claude, ChatGPT) for anyone who adds an API key. The conversation carries over when you switch.
 - **Workshop** — reads, writes and edits files in a project folder and runs commands (installs, programs, tests, git). You approve commands.
+- **Teacher for every major language and robotics** — a built-in course library (19 languages, 9 robotics courses, plus Git, debugging and algorithms) that ships inside the app, works offline, and is the same on PC and phone. Each course has a 4-level learning path with exercises; Corvis teaches step by step, checks your code, and saves your progress to your account so you can continue on another device.
 - **Self-learning** — saves engineering lessons (bug causes, fixes, techniques) and recalls them before new work, so he gets better on your projects over time.
 - **Up-to-date knowledge** — on the cloud Claude models he can also search the web and read documentation pages.
 - **Personality and memory** — calm, loyal, dry wit, calls you "sir"; remembers you and your projects between conversations.
@@ -70,12 +71,15 @@ config/models.yaml     local model server address + optional cloud models
 corvis/hub.py          the home PC hub: accounts, memory sync, shares the PC's models
 corvis/account.py      this device's sign-in and two-way memory sync
 corvis/hardware.py     detects RAM / CPU / GPU and recommends a model size
+knowledge/             the course library (Markdown) — languages/, robotics/, foundations/
+tools/check_knowledge.py  compiles and runs every example program in the library
 identity/corvis.yaml   who he is: personality, expertise, work method, self-image, safety rules
 data/memory.db         what he remembers, including lessons he has learned
 corvis/
   brain.py             conversation + tools: remember / learn / recall / forget / describe_self
   models.py            lists models installed on the device, picks the best fit
   providers.py         local models (OpenAI-compatible servers), Claude and ChatGPT behind one interface
+  knowledge.py         loads and searches the course library
   workshop.py          list / read / write / edit files, run commands — confined to the workspace
   bodies/              console, 3D avatar (Blender + engine JSON), robot (simulated or ROS 2)
   web/                 the web app (no extra dependencies)
@@ -95,6 +99,19 @@ Corvis doesn't retrain the AI model. His skill comes from the model you pick; wh
 learns is stored as memories and lessons that are given back to him in later conversations.
 In practice that means he remembers your projects, your preferences, and the fixes that
 worked, and stops repeating the same mistakes.
+
+## The course library
+
+| Area | Courses |
+|---|---|
+| Languages | Python, JavaScript, TypeScript, HTML & CSS, Java, C, C++, C#, Go, Rust, Swift, Kotlin, PHP, Ruby, SQL, Bash, Lua, Dart/Flutter, R |
+| Robotics | Fundamentals, electronics, Arduino, Raspberry Pi, PID control, kinematics & odometry, ROS 2, computer vision, safety |
+| Foundations | How Corvis teaches (and choosing a first language), Git & GitHub, debugging, data structures & algorithms |
+
+Ask things like *"Teach me Rust from scratch"*, *"I finished Arduino level 1, what's next?"* or
+*"Explain PID like I'm 12"*. Add or edit courses as Markdown in `knowledge/`; run
+`python tools/check_knowledge.py` to make sure every example program still compiles and runs
+(Arduino sketches run on a simulated board).
 
 ## Tests
 
