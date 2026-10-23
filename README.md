@@ -11,6 +11,8 @@ A JARVIS-style AI companion with:
 
 His brain is Claude (Anthropic API, `claude-opus-5-5`).
 
+![Corvis preview](docs/corvis-preview.png)
+
 ## How it fits together
 
 ```
