@@ -27,7 +27,7 @@ def ask_approval(command: str) -> bool:
 
 def terminal(corvis: Corvis, identity: Identity, ros2: bool) -> None:
     print(f"{identity.name} online — thinking with {corvis.model.label}.")
-    print("Commands: /models  /model <id>  /effort <level>  /body <console|avatar|robot>  exit\n")
+    print("Commands: /device  /models  /model <id>  /effort <level>  /body <console|avatar|robot>  exit\n")
     while True:
         try:
             text = input("You: ").strip()
@@ -38,10 +38,17 @@ def terminal(corvis: Corvis, identity: Identity, ros2: bool) -> None:
         if text.lower() in {"exit", "quit"}:
             break
         try:
+            if text == "/device":
+                d = corvis.catalog.device
+                print(f" {d.system} {d.machine} · {d.summary()}")
+                print(f" Recommended local model: {d.recommended_model} ({d.recommendation_reason})")
+                print(f" Install it with:  ollama pull {d.recommended_model}")
+                continue
             if text == "/models":
+                corvis.catalog.refresh()
                 for m in corvis.catalog.list():
                     mark = "*" if m.id == corvis.model.id else " "
-                    print(f" {mark} {m.id:22} {m.label} — {m.description}")
+                    print(f" {mark} {m.id:24} [{m.group}] {m.description}")
                 continue
             if text.startswith("/model "):
                 corvis.switch_model(text.split(maxsplit=1)[1])
@@ -81,6 +88,12 @@ def main() -> None:
 
     identity = Identity.load()
     catalog = ModelCatalog.load()
+    d = catalog.device
+    print(f"Device: {d.summary()}")
+    if not catalog.local:
+        print(f"No local models found. For on-device AI, install Ollama (https://ollama.com) and run:\n"
+              f"    ollama pull {d.recommended_model}      ({d.recommendation_reason})\n"
+              f"Until then Corvis can only use cloud models, which need an API key.")
 
     if args.web:
         from .web.server import serve

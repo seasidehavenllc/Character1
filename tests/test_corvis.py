@@ -7,6 +7,7 @@ from corvis.bodies import AvatarBody, ConsoleBody, RobotBody, SimulatedDriver
 from corvis.brain import Corvis
 from corvis.identity import Identity
 from corvis.memory import MemoryStore
+from corvis.hardware import DeviceInfo, detect
 from corvis.models import ModelCatalog, ModelConfig
 from corvis.providers import AnthropicProvider, OpenAIProvider
 from corvis.workshop import Workshop
@@ -18,11 +19,39 @@ def test_identity_prompt_has_personality_expertise_and_body():
     assert "Rust" in prompt and "learn" in prompt
 
 
-def test_model_catalog_loads_claude_and_chatgpt():
-    cat = ModelCatalog.load()
-    providers = {m.provider for m in cat.list()}
-    assert providers == {"anthropic", "openai"}
-    assert cat.get(cat.default).provider == "anthropic"
+def device(ram_gb=16.0, recommended="qwen2.5-coder:7b"):
+    return DeviceInfo("Linux", "x86_64", 8, ram_gb, "CPU only", recommended, "test")
+
+
+def test_hardware_detection_recommends_a_model():
+    d = detect()
+    assert d.ram_gb > 0 and d.cpu_cores >= 1 and ":" in d.recommended_model
+
+
+def test_catalog_lists_local_models_and_picks_best_fit(tmp_path):
+    import http.server, threading
+
+    class FakeOllama(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"data": [{"id": "llama3.2:3b"}, {"id": "qwen2.5-coder:14b"},
+                                        {"id": "qwen2.5-coder:70b"}]}).encode()
+            self.send_response(200); self.end_headers(); self.wfile.write(body)
+        def log_message(self, *a): pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), FakeOllama)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        cat = ModelCatalog([], f"http://127.0.0.1:{srv.server_port}/v1", device=device(ram_gb=32, recommended="none"))
+        assert [m.group for m in cat.list()] == ["This device"] * 3
+        assert cat.default == "qwen2.5-coder:14b"   # 70b doesn't fit in 32 GB
+    finally:
+        srv.shutdown()
+
+
+def test_catalog_falls_back_to_cloud_without_local_models():
+    cat = ModelCatalog.load()  # no local server running in tests
+    cat.local = []
+    assert cat.get(cat.default).group == "Cloud"
 
 
 def test_memory_add_search_forget():
@@ -80,7 +109,8 @@ class ScriptedProvider:
 
 
 def make_corvis(tmp_path, calls=(), body=None):
-    catalog = ModelCatalog([ModelConfig("a", "A", "anthropic"), ModelConfig("b", "B", "openai")], "a")
+    catalog = ModelCatalog([ModelConfig("a", "A", "anthropic"), ModelConfig("b", "B", "local")],
+                           default="a", device=device())
     return Corvis(Identity.load(), MemoryStore(":memory:"), body or ConsoleBody(),
                   Workshop(tmp_path, approve=lambda c: True), catalog,
                   provider_factory=lambda m, e: ScriptedProvider(m, e, calls))
@@ -165,3 +195,14 @@ def test_openai_provider_tool_loop():
     assert reply == "All set."
     assert requests[1]["messages"][-1] == {"role": "tool", "tool_call_id": "c1", "content": "got x"}
     assert requests[0]["tools"][0]["function"]["name"] == "recall"
+    assert "reasoning_effort" in requests[0]
+
+
+def test_local_models_skip_cloud_only_options():
+    requests = []
+    msg = NS(content="Hi.", refusal=None, tool_calls=None)
+    client = NS(chat=NS(completions=NS(create=lambda **kw: requests.append(kw) or NS(choices=[NS(message=msg)]))))
+    p = OpenAIProvider(ModelConfig("qwen2.5-coder:7b", "Q", "local", base_url="http://x/v1"), client=client)
+    p.start("SYS", [], [])
+    assert p.send("hi", lambda n, a: ("", False), lambda e: None) == "Hi."
+    assert "reasoning_effort" not in requests[0]

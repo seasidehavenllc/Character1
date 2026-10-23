@@ -1,4 +1,4 @@
-"""Model providers: the same Corvis can think with Claude or ChatGPT.
+"""Model providers: the same Corvis can think with a local model, Claude or ChatGPT.
 
 Each provider runs one conversation turn, including the tool-calling loop, and keeps
 its own native message history. When you switch models, Corvis starts the new provider
@@ -99,16 +99,20 @@ class AnthropicProvider(Provider):
 
 
 class OpenAIProvider(Provider):
+    """ChatGPT in the cloud, or any local model server that speaks the same API (Ollama, LM Studio...)."""
+
     EFFORT = {"low": "low", "medium": "medium", "high": "high", "xhigh": "high", "max": "high"}
 
     def __init__(self, model: ModelConfig, effort: str = "high", client: Any = None):
         super().__init__(model, effort)
         if client is None:
-            try:
-                import openai
-            except ImportError as e:
-                raise RuntimeError("ChatGPT models need the OpenAI SDK: pip install openai") from e
-            client = openai.OpenAI()
+            import openai
+
+            if model.provider == "local":
+                # Local servers ignore the key; CPU-only devices can be slow, so allow long replies.
+                client = openai.OpenAI(base_url=model.base_url, api_key="local", timeout=900)
+            else:
+                client = openai.OpenAI()
         self.client = client
 
     def start(self, system, tools, transcript):
@@ -123,11 +127,11 @@ class OpenAIProvider(Provider):
     def send(self, user_text, run_tool, on_event):
         self.messages.append({"role": "user", "content": user_text})
         while True:
+            extra = {}
+            if self.model.provider == "openai":
+                extra["reasoning_effort"] = self.EFFORT.get(self.effort, "medium")
             response = self.client.chat.completions.create(
-                model=self.model.id,
-                messages=self.messages,
-                tools=self.tools,
-                reasoning_effort=self.EFFORT.get(self.effort, "medium"),
+                model=self.model.id, messages=self.messages, tools=self.tools, **extra,
             )
             msg = response.choices[0].message
             calls = msg.tool_calls or []
@@ -153,6 +157,6 @@ class OpenAIProvider(Provider):
 def make_provider(model: ModelConfig, effort: str = "high") -> Provider:
     if model.provider == "anthropic":
         return AnthropicProvider(model, effort)
-    if model.provider == "openai":
+    if model.provider in ("openai", "local"):
         return OpenAIProvider(model, effort)
     raise ValueError(f"Unknown provider {model.provider!r} for model {model.id}")

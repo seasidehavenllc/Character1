@@ -38,7 +38,9 @@ class App:
         return {
             "name": self.identity.name,
             "self_image": self.identity.self_image,
-            "models": [m.__dict__ for m in c.catalog.list()],
+            "models": [{"id": m.id, "label": m.label, "group": m.group, "description": m.description}
+                       for m in c.catalog.list()],
+            "device": {**c.catalog.device.to_dict(), "summary": c.catalog.device.summary()},
             "model": c.model.id,
             "effort": c.effort,
             "efforts": EFFORTS,
@@ -50,6 +52,8 @@ class App:
 
     def settings(self, data: dict[str, Any]) -> dict[str, Any]:
         with self.lock:
+            if data.get("refresh_models"):
+                self.corvis.catalog.refresh()
             if "model" in data:
                 self.corvis.switch_model(data["model"])
             if "effort" in data and data["effort"] in EFFORTS:

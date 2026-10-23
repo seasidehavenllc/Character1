@@ -8,10 +8,11 @@ language, learns from his own mistakes, and explains what he did so you learn to
 
 ![Corvis web app](docs/corvis-web.png)
 
-- **Swap AI models like the Claude and ChatGPT apps** — Claude Opus 5.5, Fable 5.1, Sonnet 5.5, Haiku 5.5, or ChatGPT, from a dropdown. The conversation carries over when you switch.
+- **Runs on the user's own device** — Corvis checks the device's memory and graphics chip, picks the best local AI model it can run, and works offline. No per-message cost, and conversations stay on the device.
+- **Swap models like the Claude and ChatGPT apps** — every model installed on the device shows in a dropdown, with optional cloud models (Claude, ChatGPT) for anyone who adds an API key. The conversation carries over when you switch.
 - **Workshop** — reads, writes and edits files in a project folder and runs commands (installs, programs, tests, git). You approve commands.
 - **Self-learning** — saves engineering lessons (bug causes, fixes, techniques) and recalls them before new work, so he gets better on your projects over time.
-- **Up-to-date knowledge** — on supported Claude models he can search the web and read documentation pages.
+- **Up-to-date knowledge** — on the cloud Claude models he can also search the web and read documentation pages.
 - **Personality and memory** — calm, loyal, dry wit, calls you "sir"; remembers you and your projects between conversations.
 - **Self-image and bodies** — knows what he looks like, can build his own 3D model, and can move into a robot body.
 
@@ -20,29 +21,39 @@ language, learns from his own mistakes, and explains what he did so you learn to
 ## Quick start
 
 ```bash
-pip install -e ".[chatgpt]"                 # drop [chatgpt] if you only want Claude
-export ANTHROPIC_API_KEY=sk-ant-...          # https://console.anthropic.com
-export OPENAI_API_KEY=sk-...                 # optional, for ChatGPT  https://platform.openai.com
+pip install -e .
+
+# On-device AI: install Ollama from https://ollama.com, then pull a model that fits.
+# Corvis prints the best fit for your device at startup (or type /device).
+ollama pull qwen2.5-coder:7b
 
 python -m corvis --web                       # the web app at http://127.0.0.1:8800
 python -m corvis                             # or chat in the terminal
 ```
 
+Model size guide (Corvis picks automatically): under 6 GB RAM `qwen2.5-coder:1.5b`,
+6 GB+ `3b`, 12 GB+ `7b`, 24 GB+ `14b`, 48 GB+ `32b`. Bigger is smarter but slower.
+LM Studio, llama.cpp or vLLM work too: point `local.server` in `config/models.yaml` at them.
+
+Optional cloud models: `export ANTHROPIC_API_KEY=...` and/or `export OPENAI_API_KEY=...`.
+
 Projects Corvis builds go in `workspace/` (change with `--workspace /path/to/folder`).
 
-**Terminal commands:** `/models`, `/model <id>`, `/effort <low|medium|high|xhigh|max>`,
+**Terminal commands:** `/device`, `/models`, `/model <id>`, `/effort <low|medium|high|xhigh|max>`,
 `/body <console|avatar|robot>`, `exit`. Typing just `stop`, `halt` or `freeze` halts any
 robot motion instantly.
 
 ## How it fits together
 
 ```
-config/models.yaml     the models you can switch between (add/remove freely)
+config/models.yaml     local model server address + optional cloud models
+corvis/hardware.py     detects RAM / CPU / GPU and recommends a model size
 identity/corvis.yaml   who he is: personality, expertise, work method, self-image, safety rules
 data/memory.db         what he remembers, including lessons he has learned
 corvis/
   brain.py             conversation + tools: remember / learn / recall / forget / describe_self
-  providers.py         Claude (Anthropic API) and ChatGPT (OpenAI API) behind one interface
+  models.py            lists models installed on the device, picks the best fit
+  providers.py         local models (OpenAI-compatible servers), Claude and ChatGPT behind one interface
   workshop.py          list / read / write / edit files, run commands — confined to the workspace
   bodies/              console, 3D avatar (Blender + engine JSON), robot (simulated or ROS 2)
   web/                 the web app (no extra dependencies)
@@ -66,7 +77,7 @@ worked, and stops repeating the same mistakes.
 ## Tests
 
 ```bash
-pip install -e ".[dev,chatgpt]" && pytest
+pip install -e ".[dev]" && pytest
 ```
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next.

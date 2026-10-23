@@ -1,44 +1,33 @@
-# Models Corvis can think with. Pick one in the web UI dropdown, or with
-# `/model <id>` in the terminal. Add or remove entries freely.
+# How Corvis finds models to think with.
 #
-# provider: anthropic  -> needs ANTHROPIC_API_KEY  (https://console.anthropic.com)
-# provider: openai     -> needs OPENAI_API_KEY     (https://platform.openai.com) and `pip install openai`
-#
-# Options (anthropic only):
-#   fallbacks: true  -> if the model declines a request, the API retries it on a fallback model
-#   web_tools: true  -> Corvis can search the web and read docs pages (needs a model that supports it)
+# 1. THIS DEVICE (default) — models running on the user's own computer through a local
+#    model server. Install Ollama (https://ollama.com), then e.g. `ollama pull qwen2.5-coder:7b`.
+#    Corvis lists every model the server has. LM Studio, llama.cpp and vLLM work too:
+#    point `server` at their OpenAI-compatible address.
+# 2. CLOUD (optional) — hosted models. Only used if picked, and they need an API key.
 
-default: claude-opus-5-5
+# "auto" picks the best model this device can run; falls back to cloud if none is installed.
+default: auto
 
-models:
+local:
+  server: http://localhost:11434/v1     # Ollama's OpenAI-compatible address
+
+cloud:
   - id: claude-opus-5-5
     label: Claude Opus 5.5
     provider: anthropic
-    description: Best all-round coder and engineer. Default.
+    description: Anthropic cloud model. Needs ANTHROPIC_API_KEY.
     fallbacks: true
     web_tools: true
-
-  - id: claude-fable-5-1
-    label: Claude Fable 5.1
-    provider: anthropic
-    description: Anthropic's most capable model, for the hardest builds. Slower and pricier.
-    fallbacks: true
-
   - id: claude-sonnet-5-5
     label: Claude Sonnet 5.5
     provider: anthropic
-    description: Fast and capable for everyday coding.
+    description: Anthropic cloud model. Needs ANTHROPIC_API_KEY.
     fallbacks: true
     web_tools: true
-
-  - id: claude-haiku-5-5
-    label: Claude Haiku 5.5
-    provider: anthropic
-    description: Fastest and cheapest, for quick questions.
-
-  # ChatGPT. OpenAI renames models often: if this ID stops working, replace it
-  # with a current model name from https://platform.openai.com/docs/models
+  # OpenAI renames models often: replace with a current name from
+  # https://platform.openai.com/docs/models if this stops working.
   - id: gpt-5
     label: ChatGPT (GPT-5)
     provider: openai
-    description: OpenAI's model, through the OpenAI API.
+    description: OpenAI cloud model. Needs OPENAI_API_KEY.

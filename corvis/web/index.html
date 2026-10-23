@@ -36,7 +36,9 @@ select { background: var(--panel2); border: 1px solid var(--line); border-radius
 .switch span::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: var(--dim); border-radius: 50%; transition: .2s; }
 .switch input:checked + span { background: var(--cyan-dim); border-color: var(--cyan); }
 .switch input:checked + span::before { transform: translateX(18px); background: var(--cyan); }
-.ws { font: 11px ui-monospace, Menlo, monospace; color: var(--dim); word-break: break-all; text-transform: none; letter-spacing: 0; }
+.refresh { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px; font-size: 12px; cursor: pointer; }
+.refresh:hover { border-color: var(--cyan); }
+.ws { font: 11px ui-monospace, Menlo, monospace; color: var(--dim); word-break: break-all; white-space: pre-line; text-transform: none; letter-spacing: 0; }
 
 /* Main */
 main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -115,6 +117,8 @@ textarea { flex: 1; background: none; border: 0; outline: none; resize: none; ma
     <div>Allow commands<small>Let Corvis run code, tests and installs in his workspace</small></div>
     <label class="switch"><input type="checkbox" id="allow"><span></span></label>
   </div>
+  <label class="field">This device<div class="ws" id="device"></div></label>
+  <button type="button" class="refresh" id="refresh">Refresh installed models</button>
   <label class="field">Workspace<div class="ws" id="ws"></div></label>
 </aside>
 
@@ -204,10 +208,10 @@ function welcome() {
 function applyState(s) {
   state = s;
   $("model").innerHTML = "";
-  for (const provider of ["anthropic", "openai"]) {
+  for (const name of ["This device", "Cloud"]) {
     const group = document.createElement("optgroup");
-    group.label = provider === "anthropic" ? "Claude" : "ChatGPT";
-    s.models.filter((m) => m.provider === provider).forEach((m) => group.appendChild(new Option(m.label, m.id)));
+    group.label = name === "Cloud" ? "Cloud (needs API key)" : name;
+    s.models.filter((m) => m.group === name).forEach((m) => group.appendChild(new Option(m.label, m.id)));
     if (group.children.length) $("model").appendChild(group);
   }
   $("model").value = s.model;
@@ -217,6 +221,10 @@ function applyState(s) {
   $("bodySel").value = s.body;
   $("allow").checked = s.allow_commands;
   $("ws").textContent = s.workspace;
+  const local = s.models.some((m) => m.group === "This device");
+  $("device").textContent = `${s.device.summary}\n` + (local
+    ? `Best fit: ${s.device.recommended_model}`
+    : `No local models yet. Install Ollama, then: ollama pull ${s.device.recommended_model}`);
 }
 
 async function settings(change) { applyState(await api("/api/settings", change)); }
@@ -225,6 +233,7 @@ $("model").onchange = (e) => settings({ model: e.target.value });
 $("effort").onchange = (e) => settings({ effort: e.target.value });
 $("bodySel").onchange = (e) => settings({ body: e.target.value });
 $("allow").onchange = (e) => settings({ allow_commands: e.target.checked });
+$("refresh").onclick = () => settings({ refresh_models: true });
 $("menu").onclick = () => $("side").classList.toggle("open");
 
 function setBusy(on) {
