@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from ..account import Account, HubError
 from ..brain import Corvis
 from ..identity import Identity
 from ..memory import MemoryStore
@@ -24,14 +25,15 @@ INDEX = Path(__file__).resolve().parent / "index.html"
 
 
 class App:
-    def __init__(self, identity: Identity, catalog: ModelCatalog, workspace: Path,
+    def __init__(self, identity: Identity, catalog: ModelCatalog, account: Account, workspace: Path,
                  model_id: str | None, effort: str):
         self.identity = identity
         self.allow_commands = False
         self.lock = threading.Lock()
         self.corvis = Corvis(identity, MemoryStore(), make_body("avatar", identity),
                              Workshop(workspace, approve=lambda cmd: self.allow_commands),
-                             catalog, model_id, effort)
+                             catalog, model_id, effort, account=account)
+        self.corvis.sync(force=True)
 
     def state(self) -> dict[str, Any]:
         c = self.corvis
@@ -48,6 +50,11 @@ class App:
             "allow_commands": self.allow_commands,
             "workspace": str(c.workshop.root),
             "transcript": c.transcript,
+            "active_model": c.active.label if c.active else None,
+            "account": {
+                "signed_in": c.account.signed_in, "username": c.account.username, "hub_url": c.account.hub_url,
+                "hub_online": c.account.hub_online, "last_sync": c.account.last_sync,
+            },
         }
 
     def settings(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -62,6 +69,25 @@ class App:
                 self.corvis.transfer_to(make_body(data["body"], self.identity))
             if "allow_commands" in data:
                 self.allow_commands = bool(data["allow_commands"])
+            if data.get("sync"):
+                self.corvis.sync(force=True)
+        return self.state()
+
+    def auth(self, data: dict[str, Any]) -> dict[str, Any]:
+        with self.lock:
+            acct = self.corvis.account
+            try:
+                if data.get("action") == "logout":
+                    acct.sign_out()
+                else:
+                    acct.sign_in(data["hub_url"], data["username"], data["password"],
+                                 register=data.get("action") == "register")
+                    self.corvis.sync(force=True)
+            except HubError as e:
+                return {**self.state(), "error": str(e)}
+            self.corvis.catalog.refresh()
+            if self.corvis.model.provider != "auto" and self.corvis.model not in self.corvis.catalog.list():
+                self.corvis.switch_model(self.corvis.catalog.default)
         return self.state()
 
     def chat(self, message: str) -> dict[str, Any]:
@@ -69,7 +95,7 @@ class App:
         with self.lock:
             try:
                 reply = self.corvis.chat(message, on_event=events.append)
-                return {"reply": reply, "events": events, "model": self.corvis.model.label}
+                return {"reply": reply, "events": events, "model": self.corvis.active.label}
             except Exception as e:
                 msg = describe_api_error(e)
                 if msg is None:
@@ -78,9 +104,9 @@ class App:
                 return {"error": msg, "events": events}
 
 
-def serve(identity: Identity, catalog: ModelCatalog, workspace: Path, port: int = 8800,
+def serve(identity: Identity, catalog: ModelCatalog, account: Account, workspace: Path, port: int = 8800,
           model_id: str | None = None, effort: str = "high") -> None:
-    app = App(identity, catalog, workspace, model_id, effort)
+    app = App(identity, catalog, account, workspace, model_id, effort)
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code: int, body: bytes, ctype: str = "application/json") -> None:
@@ -109,6 +135,8 @@ def serve(identity: Identity, catalog: ModelCatalog, workspace: Path, port: int 
                     self._json(app.chat(str(data.get("message", ""))))
                 elif self.path == "/api/settings":
                     self._json(app.settings(data))
+                elif self.path == "/api/auth":
+                    self._json(app.auth(data))
                 else:
                     self._json({"error": "not found"}, 404)
             except (KeyError, ValueError) as e:

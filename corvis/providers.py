@@ -98,8 +98,35 @@ class AnthropicProvider(Provider):
             self.messages.append({"role": "user", "content": results})
 
 
+def parse_text_tool_calls(text: str, tool_names: set[str]) -> list[tuple[str, dict[str, Any]]]:
+    """Find tool calls a local model wrote as plain JSON text instead of real tool calls.
+
+    Small open models often answer with e.g. {"name": "write_file", "arguments": {...}},
+    sometimes inside ```json fences or <tool_call> tags. Only names of real tools count.
+    """
+    calls, decoder, i = [], json.JSONDecoder(), 0
+    while (i := text.find("{", i)) != -1:
+        try:
+            obj, end = decoder.raw_decode(text, i)
+        except ValueError:
+            i += 1
+            continue
+        if isinstance(obj, dict) and obj.get("name") in tool_names:
+            args = obj.get("arguments", obj.get("parameters", {}))
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except ValueError:
+                    args = None
+            if isinstance(args, dict):
+                calls.append((obj["name"], args))
+        i = end
+    return calls
+
+
 class OpenAIProvider(Provider):
-    """ChatGPT in the cloud, or any local model server that speaks the same API (Ollama, LM Studio...)."""
+    """ChatGPT in the cloud, or any model server that speaks the same API:
+    Ollama / LM Studio on this device ("local"), or the user's home PC hub ("home")."""
 
     EFFORT = {"low": "low", "medium": "medium", "high": "high", "xhigh": "high", "max": "high"}
 
@@ -108,14 +135,15 @@ class OpenAIProvider(Provider):
         if client is None:
             import openai
 
-            if model.provider == "local":
-                # Local servers ignore the key; CPU-only devices can be slow, so allow long replies.
-                client = openai.OpenAI(base_url=model.base_url, api_key="local", timeout=900)
+            if model.provider in ("local", "home"):
+                # CPU-only devices can be slow, so allow long replies.
+                client = openai.OpenAI(base_url=model.base_url, api_key=model.api_key or "local", timeout=900)
             else:
                 client = openai.OpenAI()
         self.client = client
 
     def start(self, system, tools, transcript):
+        self.tool_names = {t["name"] for t in tools}
         self.tools = [
             {"type": "function",
              "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}}
@@ -126,37 +154,42 @@ class OpenAIProvider(Provider):
 
     def send(self, user_text, run_tool, on_event):
         self.messages.append({"role": "user", "content": user_text})
+        turn = 0
         while True:
+            turn += 1
             extra = {}
             if self.model.provider == "openai":
                 extra["reasoning_effort"] = self.EFFORT.get(self.effort, "medium")
             response = self.client.chat.completions.create(
-                model=self.model.id, messages=self.messages, tools=self.tools, **extra,
+                model=self.model.api_model or self.model.id, messages=self.messages, tools=self.tools, **extra,
             )
             msg = response.choices[0].message
-            calls = msg.tool_calls or []
-            entry: dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
+            content = msg.content or ""
+            # (call id, tool name, arguments as a JSON string)
+            calls = [(c.id, c.function.name, c.function.arguments or "{}") for c in (msg.tool_calls or [])]
+            if not calls and self.model.provider != "openai":
+                calls = [(f"text_call_{turn}_{n}", name, json.dumps(args))
+                         for n, (name, args) in enumerate(parse_text_tool_calls(content, self.tool_names))]
+                if calls:
+                    content = ""  # the text was the tool calls themselves
+            entry: dict[str, Any] = {"role": "assistant", "content": content}
             if calls:
-                entry["tool_calls"] = [
-                    {"id": c.id, "type": "function",
-                     "function": {"name": c.function.name, "arguments": c.function.arguments}}
-                    for c in calls
-                ]
+                entry["tool_calls"] = [{"id": cid, "type": "function", "function": {"name": name, "arguments": args}}
+                                       for cid, name, args in calls]
             self.messages.append(entry)
             if not calls:
-                return (msg.content or msg.refusal or "").strip()
-            for c in calls:
+                return (content or msg.refusal or "").strip()
+            for cid, name, args in calls:
                 try:
-                    args = json.loads(c.function.arguments or "{}")
-                    out, _ = run_tool(c.function.name, args)
+                    out, _ = run_tool(name, json.loads(args))
                 except json.JSONDecodeError:
                     out = "Error: tool arguments were not valid JSON."
-                self.messages.append({"role": "tool", "tool_call_id": c.id, "content": out})
+                self.messages.append({"role": "tool", "tool_call_id": cid, "content": out})
 
 
 def make_provider(model: ModelConfig, effort: str = "high") -> Provider:
     if model.provider == "anthropic":
         return AnthropicProvider(model, effort)
-    if model.provider in ("openai", "local"):
+    if model.provider in ("openai", "local", "home"):
         return OpenAIProvider(model, effort)
     raise ValueError(f"Unknown provider {model.provider!r} for model {model.id}")

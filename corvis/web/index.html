@@ -36,6 +36,14 @@ select { background: var(--panel2); border: 1px solid var(--line); border-radius
 .switch span::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: var(--dim); border-radius: 50%; transition: .2s; }
 .switch input:checked + span { background: var(--cyan-dim); border-color: var(--cyan); }
 .switch input:checked + span::before { transform: translateX(18px); background: var(--cyan); }
+.acct { display: flex; flex-direction: column; gap: 6px; font-size: 11px; letter-spacing: 1.5px; color: var(--dim); text-transform: uppercase; }
+.acct #acctOut, .acct #acctIn { display: flex; flex-direction: column; gap: 6px; }
+.acct [hidden] { display: none !important; }
+.acct input { font: 13px system-ui, sans-serif; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; text-transform: none; letter-spacing: 0; }
+.acct input:focus { outline: none; border-color: var(--cyan); }
+.row2 { display: flex; gap: 6px; } .row2 button { flex: 1; text-transform: none; letter-spacing: 0; }
+.ws.err { color: var(--red); }
+.online { color: #3ddc97; } .offline { color: var(--gold); }
 .refresh { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px; font-size: 12px; cursor: pointer; }
 .refresh:hover { border-color: var(--cyan); }
 .ws { font: 11px ui-monospace, Menlo, monospace; color: var(--dim); word-break: break-all; white-space: pre-line; text-transform: none; letter-spacing: 0; }
@@ -116,6 +124,21 @@ textarea { flex: 1; background: none; border: 0; outline: none; resize: none; ma
   <div class="toggle">
     <div>Allow commands<small>Let Corvis run code, tests and installs in his workspace</small></div>
     <label class="switch"><input type="checkbox" id="allow"><span></span></label>
+  </div>
+  <div class="field acct">Corvis account
+    <div id="acctOut">
+      <input id="hubUrl" placeholder="Home PC address, e.g. 192.168.1.20:8810" autocomplete="url">
+      <input id="user" placeholder="Username" autocomplete="username">
+      <input id="pass" type="password" placeholder="Password" autocomplete="current-password">
+      <div class="row2"><button type="button" class="refresh" id="signIn">Sign in</button>
+        <button type="button" class="refresh" id="register">Create account</button></div>
+    </div>
+    <div id="acctIn" hidden>
+      <div class="ws" id="acctStatus"></div>
+      <div class="row2"><button type="button" class="refresh" id="syncNow">Sync now</button>
+        <button type="button" class="refresh" id="signOut">Sign out</button></div>
+    </div>
+    <div class="ws err" id="acctErr"></div>
   </div>
   <label class="field">This device<div class="ws" id="device"></div></label>
   <button type="button" class="refresh" id="refresh">Refresh installed models</button>
@@ -208,14 +231,23 @@ function welcome() {
 function applyState(s) {
   state = s;
   $("model").innerHTML = "";
-  for (const name of ["This device", "Cloud"]) {
+  for (const name of ["Auto", "Home PC", "This device", "Cloud"]) {
     const group = document.createElement("optgroup");
     group.label = name === "Cloud" ? "Cloud (needs API key)" : name;
     s.models.filter((m) => m.group === name).forEach((m) => group.appendChild(new Option(m.label, m.id)));
     if (group.children.length) $("model").appendChild(group);
   }
   $("model").value = s.model;
-  $("modelDesc").textContent = s.models.find((m) => m.id === s.model)?.description || "";
+  const picked = s.models.find((m) => m.id === s.model);
+  $("modelDesc").textContent = s.model === "auto" && s.active_model
+    ? `Now thinking on ${s.active_model}` : picked?.description || "";
+  const a = s.account;
+  $("acctOut").hidden = a.signed_in; $("acctIn").hidden = !a.signed_in;
+  if (a.signed_in) {
+    const ago = a.last_sync ? `synced ${Math.max(0, Math.round(Date.now() / 1000 - a.last_sync))}s ago` : "not synced yet";
+    $("acctStatus").innerHTML = `${esc(a.username)} · <span class="${a.hub_online ? "online" : "offline"}">home PC ${a.hub_online ? "online" : "offline"}</span>\n${ago}`;
+  }
+  $("acctErr").textContent = s.error || "";
   $("effort").innerHTML = s.efforts.map((e) => `<option>${e}</option>`).join("");
   $("effort").value = s.effort;
   $("bodySel").value = s.body;
@@ -233,6 +265,15 @@ $("model").onchange = (e) => settings({ model: e.target.value });
 $("effort").onchange = (e) => settings({ effort: e.target.value });
 $("bodySel").onchange = (e) => settings({ body: e.target.value });
 $("allow").onchange = (e) => settings({ allow_commands: e.target.checked });
+async function auth(action) {
+  const r = await api("/api/auth", { action, hub_url: $("hubUrl").value, username: $("user").value, password: $("pass").value });
+  if (!r.error) $("pass").value = "";
+  applyState(r);
+}
+$("signIn").onclick = () => auth("login");
+$("register").onclick = () => auth("register");
+$("signOut").onclick = () => auth("logout");
+$("syncNow").onclick = () => settings({ sync: true });
 $("refresh").onclick = () => settings({ refresh_models: true });
 $("menu").onclick = () => $("side").classList.toggle("open");
 
@@ -253,6 +294,7 @@ async function send() {
     const r = await api("/api/chat", { message: text });
     if (r.error) add("error corvis", r.error, { events: r.events });
     else add("corvis", r.reply, { events: r.events, meta: r.model });
+    applyState(await api("/api/state"));
   } catch (e) {
     add("error corvis", "Lost connection to the Corvis server.");
   }

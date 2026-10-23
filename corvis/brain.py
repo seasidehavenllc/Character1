@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Callable
 
+from .account import Account
 from .bodies.base import Body
 from .identity import Identity
 from .memory import MemoryStore
@@ -72,7 +74,7 @@ ProviderFactory = Callable[..., Provider]
 class Corvis:
     def __init__(self, identity: Identity, memory: MemoryStore, body: Body, workshop: Workshop,
                  catalog: ModelCatalog, model_id: str | None = None, effort: str = "high",
-                 provider_factory: ProviderFactory = make_provider):
+                 provider_factory: ProviderFactory = make_provider, account: Account | None = None):
         self.identity = identity
         self.memory = memory
         self.body = body
@@ -80,15 +82,19 @@ class Corvis:
         self.catalog = catalog
         self.effort = effort
         self.provider_factory = provider_factory
-        self.model = catalog.get(model_id or catalog.default)
+        self.account = account
+        self.model = catalog.get(model_id or catalog.default)  # what the user picked (may be "auto")
+        self.active = None                                       # the model actually thinking right now
         self.transcript: list[dict[str, str]] = []  # plain text, shared across models
         self.provider: Provider | None = None
+        self._last_sync_try = 0.0
 
     # --- switching -------------------------------------------------------------------
 
     def switch_model(self, model_id: str) -> None:
-        """Think with a different model. The conversation so far carries over as text."""
+        """Think with a different model (or "auto"). The conversation so far carries over as text."""
         self.model = self.catalog.get(model_id)
+        self.active = None
         self.provider = None
 
     def set_effort(self, effort: str) -> None:
@@ -107,8 +113,8 @@ class Corvis:
     def _start_provider(self) -> None:
         system = self.identity.system_prompt(
             self.body.describe(), MemoryStore.format(self.memory.top()),
-        ) + f"\n## Current model\nYou are currently thinking with {self.model.label}.\n"
-        self.provider = self.provider_factory(self.model, self.effort)
+        ) + f"\n## Current model\nYou are currently thinking with {self.active.label}.\n"
+        self.provider = self.provider_factory(self.active, self.effort)
         self.provider.start(system, self.tools(), self.transcript)
 
     # --- tools -----------------------------------------------------------------------
@@ -141,8 +147,7 @@ class Corvis:
             self.body.speak(reply)
             return reply
 
-        if self.provider is None:
-            self._start_provider()
+        self._choose_model(on_event)
 
         def run_tool(name: str, args: dict[str, Any]) -> tuple[str, bool]:
             on_event(f"{name}: {_summarize(args)}")
@@ -153,16 +158,49 @@ class Corvis:
 
         self.body.set_expression("thinking")
         try:
-            reply = self.provider.send(user_text, run_tool, on_event)
-        except Exception:
-            # The native history may now end mid-turn; rebuild it from the transcript next time.
-            self.provider = None
-            raise
+            try:
+                reply = self.provider.send(user_text, run_tool, on_event)
+            except Exception:
+                # The native history may now end mid-turn; rebuild it from the transcript next time.
+                self.provider = None
+                if not (self.model.provider == "auto" and self.active.provider == "home"):
+                    raise
+                # Auto mode: the home PC dropped off mid-reply, so carry on with this device's model.
+                on_event("home PC unreachable — switching to this device")
+                self.catalog.home = []
+                self.catalog._home_checked = time.time()
+                self._choose_model(on_event)
+                reply = self.provider.send(user_text, run_tool, on_event)
         finally:
             self.body.set_expression("idle")
         self.transcript += [{"role": "user", "text": user_text}, {"role": "assistant", "text": reply}]
         self.body.speak(reply)
+        self.sync(on_event)
         return reply
+
+    def _choose_model(self, on_event: Callable[[str], None]) -> None:
+        target = self.catalog.resolve_auto() if self.model.provider == "auto" else self.model
+        if self.active is None or target.id != self.active.id:
+            if self.model.provider == "auto":
+                on_event(f"thinking on {target.label}")
+            self.active = target
+            self.provider = None
+        if self.provider is None:
+            self._start_provider()
+
+    def sync(self, on_event: Callable[[str], None] = lambda e: None, force: bool = False) -> int | None:
+        """Share memories with the user's other devices through the home PC, when it's reachable."""
+        acct = self.account
+        if acct is None or not acct.signed_in:
+            return None
+        # When the hub looked offline, only retry once a minute so offline chats stay fast.
+        if not (force or acct.hub_online or time.time() - self._last_sync_try > 60):
+            return None
+        self._last_sync_try = time.time()
+        got = acct.try_sync(self.memory)
+        if got:
+            on_event(f"synced {got} memories from your other devices")
+        return got
 
 
 def _summarize(args: dict[str, Any]) -> str:

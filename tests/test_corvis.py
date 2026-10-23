@@ -42,8 +42,9 @@ def test_catalog_lists_local_models_and_picks_best_fit(tmp_path):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         cat = ModelCatalog([], f"http://127.0.0.1:{srv.server_port}/v1", device=device(ram_gb=32, recommended="none"))
-        assert [m.group for m in cat.list()] == ["This device"] * 3
-        assert cat.default == "qwen2.5-coder:14b"   # 70b doesn't fit in 32 GB
+        assert [m.group for m in cat.list()] == ["Auto"] + ["This device"] * 3
+        assert cat.default == "auto"
+        assert cat.resolve_auto().id == "qwen2.5-coder:14b"   # 70b doesn't fit in 32 GB
     finally:
         srv.shutdown()
 
