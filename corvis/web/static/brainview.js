@@ -44,6 +44,7 @@
     const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
     return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
   }
+  const mix = (a, b, k) => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * k));
   const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -173,12 +174,22 @@
       edges = g.edges.filter((e) => byId[e.from] && byId[e.to]).map((e) => ({ a: byId[e.from], b: byId[e.to] }));
       cats = [...new Set(nodes.map((n) => n.category))].sort();
       clusters = {};
+      const used = new Set();
+      particles.forEach((p) => { p.file = false; });
       for (const c of cats) {
         const R = regionFor(c), members = nodes.filter((n) => n.category === c).sort((a, b) => a.day - b.day || a.id.localeCompare(b.id));
         clusters[c] = { cat: c, ...R, members, color: colorOf(c) };
-        members.forEach((n, i) => {   // a small knot of neurons around the cluster's centre
-          const r = rng(hash(n.id)), a = i * 2.39996, d = 0.022 * Math.sqrt(i + 0.5) + r() * 0.01;
-          n.x = R.x + Math.cos(a) * d; n.y = R.y + Math.sin(a) * d; n.z = R.z + (r() - 0.5) * 0.05;
+        clusters[c].light = mix(clusters[c].color, [255, 255, 255], 0.55);
+        // each file becomes one of the brain's own particles near its region, so knowledge is part of
+        // the brain rather than drawn on top of it
+        const near = particles.map((p, i) => [Math.hypot(p.x - R.x, p.y - R.y, (p.z - R.z) * 1.4), i])
+          .filter(([, i]) => particles[i].part === "cerebrum" && particles[i].z > 0.1 && !used.has(i))
+          .sort((a, b) => a[0] - b[0]);
+        members.forEach((n, i) => {
+          const pi = near[Math.min(i * 2 + (hash(n.id) % 2), near.length - 1)][1];
+          used.add(pi);
+          const p = particles[pi];
+          n.x = p.x; n.y = p.y; n.z = p.z; n.pi = pi; p.file = true;
         });
       }
       const pairs = {};
@@ -250,7 +261,12 @@
           let d = 2.5;
           for (const c of centres) d = Math.min(d, Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z));
           p.tint = null;
-          for (const c of centres) if (Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z) < 0.26) p.tint = c.color;
+          const base = BASE[p.x < -0.25 ? 0 : p.x < 0.35 ? 1 : 2];
+          for (const c of centres) {
+            const dc = Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z);
+            if (dc < 0.13) p.tint = mix(base, c.color, 0.6);
+            else if (dc < 0.24 && !p.tint) p.tint = mix(base, c.color, 0.32);
+          }
           return [d * 0.8 + (hash(i) % 1000) / 1000 * 0.9, i];
         }).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
       }
@@ -306,6 +322,7 @@
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
         p.a += ((lit[i] ? 1 : 0) - p.a) * 0.06;
+        if (p.file) { [p.sx, p.sy] = project(p.x, p.y, p.z); continue; }   // drawn as a lit neuron below
         if (p.a < 0.02) continue;
         const [x, y, z] = project(p.x, p.y, p.z);
         p.sx = x; p.sy = y;
@@ -383,14 +400,14 @@
         const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2 + 0.25, mz = Math.max(A.z, B.z) + 0.35;
         const m = project(mx, my, mz);
         const focused = focus && (focus.cat === l.a || focus.cat === l.b);
-        const a = focus ? (focused ? 0.45 : 0.03) : 0.16 + Math.min(0.22, l.n * 0.04);
-        ctx.strokeStyle = rgba(A.color, a); ctx.lineWidth = Math.min(2.2, 0.7 + l.n * 0.25);
+        const a = focus ? (focused ? 0.35 : 0.02) : 0.06 + Math.min(0.1, l.n * 0.025);
+        ctx.strokeStyle = rgba(A.light, a); ctx.lineWidth = Math.min(1.2, 0.5 + l.n * 0.12);
         ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.quadraticCurveTo(m[0], m[1], B.sx, B.sy); ctx.stroke();
         if (!reduceMotion && (!focus || focused)) {
           const u = (t * l.speed + l.phase) % 1, v = 1 - u;
           const x = v * v * A.sx + 2 * v * u * m[0] + u * u * B.sx, y = v * v * A.sy + 2 * v * u * m[1] + u * u * B.sy;
-          ctx.fillStyle = "rgba(255,255,255,.85)";
-          ctx.beginPath(); ctx.arc(x, y, 1.8, 0, TAU); ctx.fill();
+          ctx.fillStyle = rgba(A.light, 0.6);
+          ctx.beginPath(); ctx.arc(x, y, 1.3, 0, TAU); ctx.fill();
         }
       }
       for (const c of Object.values(clusters)) {
@@ -401,21 +418,34 @@
         const pulse = reduceMotion ? 1 : 1 + 0.06 * Math.sin(t * 2 + c.x * 3);
         const vital = 0.5 + 0.5 * (c.health / 100);
         const r = c.sr * pulse * (hover === c ? 1.15 : 1);
-        const g = ctx.createRadialGradient(c.sx, c.sy, 0, c.sx, c.sy, r * 2.3);
-        g.addColorStop(0, rgba(c.color, 0.5 * vital * k));
-        g.addColorStop(0.3, rgba(c.color, 0.12 * vital * k));
+        const g = ctx.createRadialGradient(c.sx, c.sy, 0, c.sx, c.sy, r * 1.6);
+        g.addColorStop(0, rgba(c.color, 0.1 * vital * k));
         g.addColorStop(1, rgba(c.color, 0));
         ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(c.sx, c.sy, r * 2.3, 0, TAU); ctx.fill();
-        // its neurons, a bright knot
-        for (const n of c.shown) {
-          const [x, y, , f] = project(n.x, n.y, n.z);
-          const p = grown(n, now);
-          ctx.fillStyle = rgba([255, 255, 255], 0.9 * k * p);
-          ctx.beginPath(); ctx.arc(x, y, (1.4 + n.health / 60) * f * z * ease(p), 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(c.sx, c.sy, r * 1.6, 0, TAU); ctx.fill();
+        for (const n of c.shown) { const q = particles[n.pi]; n.px = q.sx; n.py = q.sy; }
+        ctx.lineWidth = 0.7;
+        ctx.strokeStyle = rgba(c.light, 0.4 * k);
+        ctx.beginPath();
+        for (const e of edges) {
+          if (e.a.category !== c.cat || e.b.category !== c.cat || grown(e.a, now) < 1 || grown(e.b, now) < 1) continue;
+          if (e.a.px === undefined || e.b.px === undefined) continue;
+          ctx.moveTo(e.a.px, e.a.py); ctx.lineTo(e.b.px, e.b.py);
+        }
+        ctx.stroke();
+        for (const n of c.shown) {   // the file's own particle, lit up
+          if (n.px === undefined) continue;
+          const p = grown(n, now), [, , , f] = project(n.x, n.y, n.z);
+          const rr = (1.2 + n.health / 70) * f * z * ease(p) * (W < 620 ? 0.85 : 1);
+          const glowR = rr * 3.2;
+          const h = ctx.createRadialGradient(n.px, n.py, 0, n.px, n.py, glowR);
+          h.addColorStop(0, rgba(c.light, 0.35 * k * p)); h.addColorStop(1, rgba(c.light, 0));
+          ctx.fillStyle = h; ctx.beginPath(); ctx.arc(n.px, n.py, glowR, 0, TAU); ctx.fill();
+          ctx.fillStyle = rgba(c.light, 0.95 * k * p);
+          ctx.beginPath(); ctx.arc(n.px, n.py, rr, 0, TAU); ctx.fill();
           if (p < 1) {
-            ctx.strokeStyle = rgba(c.color, (1 - p) * k); ctx.lineWidth = 1.2;
-            ctx.beginPath(); ctx.arc(x, y, 4 + p * 26, 0, TAU); ctx.stroke();
+            ctx.strokeStyle = rgba(c.light, (1 - p) * 0.7 * k); ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(n.px, n.py, 3 + p * 18, 0, TAU); ctx.stroke();
           }
         }
       }
@@ -476,7 +506,7 @@
       // the core where the cluster sat, now opened
       const core = [W / 2 * fp + c.sx * (1 - fp), (H / 2 + 6) * fp + c.sy * (1 - fp)];
       const g = ctx.createRadialGradient(core[0], core[1], 0, core[0], core[1], 90 * fp + 20);
-      g.addColorStop(0, rgba(c.color, 0.35 * fp)); g.addColorStop(1, rgba(c.color, 0));
+      g.addColorStop(0, rgba(c.color, 0.12 * fp)); g.addColorStop(1, rgba(c.color, 0));
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(core[0], core[1], 90 * fp + 20, 0, TAU); ctx.fill();
       for (const n of c.shown) {   // where each file sits now, part way from the knot to its place
         const [x0, y0] = project(n.x, n.y, n.z);
@@ -485,7 +515,7 @@
       }
       // threads from the core, and links inside the cluster and out to other clusters
       for (const n of c.shown) {
-        ctx.strokeStyle = rgba(c.color, 0.22 * fp); ctx.lineWidth = 1;
+        ctx.strokeStyle = rgba(c.light, 0.1 * fp); ctx.lineWidth = 0.8;
         ctx.beginPath(); ctx.moveTo(core[0], core[1]); ctx.lineTo(n.ex, n.ey); ctx.stroke();
       }
       for (const e of edges) {
@@ -493,12 +523,12 @@
         if (!ina && !inb) continue;
         const near = hover && (hover === e.a || hover === e.b);
         if (ina && inb) {
-          ctx.strokeStyle = rgba([255, 255, 255], (near ? 0.75 : 0.35) * fp); ctx.lineWidth = near ? 1.8 : 1.1;
+          ctx.strokeStyle = rgba(c.light, (near ? 0.7 : 0.3) * fp); ctx.lineWidth = near ? 1.4 : 0.8;
           ctx.beginPath(); ctx.moveTo(e.a.ex, e.a.ey); ctx.lineTo(e.b.ex, e.b.ey); ctx.stroke();
         } else {
           const mine = ina ? e.a : e.b, other = clusters[(ina ? e.b : e.a).category];
           if (!other || !other.shown.length) continue;
-          ctx.strokeStyle = rgba(other.color, (near ? 0.7 : 0.28) * fp); ctx.lineWidth = near ? 1.6 : 1;
+          ctx.strokeStyle = rgba(other.light, (near ? 0.6 : 0.18) * fp); ctx.lineWidth = near ? 1.2 : 0.8;
           ctx.setLineDash([3, 4]);
           ctx.beginPath(); ctx.moveTo(mine.ex, mine.ey); ctx.lineTo(other.sx, other.sy); ctx.stroke();
           ctx.setLineDash([]);
@@ -506,13 +536,12 @@
       }
       // the files themselves
       for (const n of c.shown) {
-        const r = (6 + n.health / 12) * z * (hover === n ? 1.25 : 1);
+        const r = (3 + n.health / 25) * z * (hover === n ? 1.3 : 1);
         const vital = 0.45 + 0.55 * (n.health / 100);
-        const g2 = ctx.createRadialGradient(n.ex, n.ey, 0, n.ex, n.ey, r * 3);
-        g2.addColorStop(0, rgba(c.color, 0.6 * vital)); g2.addColorStop(1, rgba(c.color, 0));
-        ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(n.ex, n.ey, r * 3, 0, TAU); ctx.fill();
-        ctx.fillStyle = rgba(c.color, 0.9 * vital); ctx.beginPath(); ctx.arc(n.ex, n.ey, r, 0, TAU); ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); ctx.arc(n.ex, n.ey, r * 0.4, 0, TAU); ctx.fill();
+        const g2 = ctx.createRadialGradient(n.ex, n.ey, 0, n.ex, n.ey, r * 3.2);
+        g2.addColorStop(0, rgba(c.light, 0.3 * vital)); g2.addColorStop(1, rgba(c.light, 0));
+        ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(n.ex, n.ey, r * 3.2, 0, TAU); ctx.fill();
+        ctx.fillStyle = rgba(c.light, 0.95 * vital); ctx.beginPath(); ctx.arc(n.ex, n.ey, r, 0, TAU); ctx.fill();
       }
       ctx.globalCompositeOperation = "source-over";
       if (fp > 0.55) {
@@ -520,7 +549,7 @@
         ctx.textAlign = "center";
         const font = getComputedStyle(document.body).fontFamily;
         for (const n of c.shown) {
-          const r = (6 + n.health / 12) * z;
+          const r = (3 + n.health / 25) * z;
           ctx.font = `${hover === n ? 600 : 500} ${tight ? 10.5 : 12.5}px ${font}`;
           ctx.fillStyle = "#f2f3ff";
           const max = W < 420 ? 15 : tight ? 18 : 30;
