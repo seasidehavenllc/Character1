@@ -3,6 +3,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/three/OrbitControls.js";
 import { TransformControls } from "/static/vendor/three/TransformControls.js";
+import { EffectComposer } from "/static/vendor/three/postprocessing/EffectComposer.js";
+import { RenderPass } from "/static/vendor/three/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "/static/vendor/three/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "/static/vendor/three/postprocessing/OutputPass.js";
 
 const $ = (s) => document.querySelector(s);
 const HOLO = new THREE.Color("#39d0ff");
@@ -16,8 +20,10 @@ const SIZE_LABELS = {
 const state = {
   meta: null, bp: null, summary: null, version: 0, selected: null, hidden: new Set(), isolated: false,
   dirty: false, saveTimer: null, split: 0, splitShown: 0, test: null, testResult: null, params: {},
-  anim: null, conv: null,
+  anim: null, conv: null, revealAt: -10, history: [], glow: true,
 };
+try { state.glow = localStorage.getItem("corvis-holo-glow") !== "off"; } catch (_) { /* private mode */ }
+const isPhone = () => matchMedia("(max-width: 900px)").matches;
 
 // ---------- api ----------
 async function api(path, opts = {}) {
@@ -57,26 +63,137 @@ const assembly = new THREE.Group();        // the parts
 world.add(assembly);
 scene.add(world);
 
-// floor: grid, rings and a slow scan line
-const floor = new THREE.Group();
-scene.add(floor);
-function buildFloor(radius) {
-  floor.clear();
-  const grid = new THREE.GridHelper(radius * 4, 24, 0x1d6f93, 0x123a52);
-  grid.material.transparent = true; grid.material.opacity = 0.35;
-  floor.add(grid);
-  for (const [r, o] of [[radius * 1.15, 0.6], [radius * 1.35, 0.25], [radius * 0.6, 0.18]]) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(r, r * 1.008, 128),
-      new THREE.MeshBasicMaterial({ color: HOLO, transparent: true, opacity: o, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.001;
-    floor.add(ring);
-  }
+scene.background = backdrop();
+const clock = new THREE.Clock();
+
+// glow: a bloom pass makes the hologram lines bleed light (can be turned off on slow devices)
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.35, 0.22);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+function backdrop() {
+  const c = document.createElement("canvas"); c.width = c.height = 512;
+  const g = c.getContext("2d"), grad = g.createRadialGradient(256, 310, 10, 256, 310, 400);
+  grad.addColorStop(0, "#0a2440"); grad.addColorStop(0.5, "#06132a"); grad.addColorStop(1, "#02060d");
+  g.fillStyle = grad; g.fillRect(0, 0, 512, 512);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
-const scan = new THREE.Mesh(new THREE.CircleGeometry(0.5, 96),
-  new THREE.MeshBasicMaterial({ color: HOLO, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false,
-    blending: THREE.AdditiveBlending }));
-scan.rotation.x = -Math.PI / 2;
-scene.add(scan);
+
+// ---------- the projector: a pad of turning rings, a cone of light, dust and a scan ring ----------
+function padTexture(kind) {
+  const c = document.createElement("canvas"); c.width = c.height = 1024;
+  const g = c.getContext("2d");
+  g.translate(512, 512); g.strokeStyle = g.fillStyle = "#fff";
+  const ring = (r, w, a = 1, dash = []) => {
+    g.globalAlpha = a; g.lineWidth = w; g.setLineDash(dash); g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.stroke();
+  };
+  if (kind === "outer") {
+    ring(500, 3, 0.9, [26, 14]);
+    ring(484, 2, 0.6);
+    g.setLineDash([]);
+    for (let i = 0; i < 180; i++) {          // ticks, a long one every 10 degrees
+      const a = (i / 180) * Math.PI * 2, long = i % 5 === 0, r2 = long ? 438 : 455;
+      g.globalAlpha = long ? 0.9 : 0.45; g.lineWidth = long ? 3 : 1.5;
+      g.beginPath(); g.moveTo(Math.cos(a) * 470, Math.sin(a) * 470); g.lineTo(Math.cos(a) * r2, Math.sin(a) * r2); g.stroke();
+    }
+    ring(420, 1.5, 0.35, [4, 10]);
+    g.setLineDash([]);
+    for (let i = 0; i < 3; i++) {            // three bright arcs
+      g.globalAlpha = 0.85; g.lineWidth = 7; g.beginPath(); g.arc(0, 0, 398, i * 2.094, i * 2.094 + 0.9); g.stroke();
+    }
+  } else {
+    for (let i = 0; i < 8; i++) {            // segment blocks
+      const a0 = (i / 8) * Math.PI * 2 + 0.05, a1 = a0 + Math.PI / 4 - 0.1;
+      g.setLineDash([]); g.globalAlpha = 0.16;
+      g.beginPath(); g.arc(0, 0, 330, a0, a1); g.arc(0, 0, 270, a1, a0, true); g.closePath(); g.fill();
+      g.globalAlpha = 0.6; g.lineWidth = 2; g.stroke();
+    }
+    ring(240, 2, 0.5, [2, 12]);
+    ring(190, 3, 0.8);
+    ring(150, 1.5, 0.5, [40, 20]);
+    g.globalAlpha = 0.8;
+    for (let i = 0; i < 24; i++) { const a = (i / 24) * Math.PI * 2; g.beginPath(); g.arc(Math.cos(a) * 215, Math.sin(a) * 215, 4, 0, 7); g.fill(); }
+    const glow = g.createRadialGradient(0, 0, 0, 0, 0, 130);
+    glow.addColorStop(0, "rgba(255,255,255,0.6)"); glow.addColorStop(0.25, "rgba(255,255,255,0.22)"); glow.addColorStop(1, "rgba(255,255,255,0)");
+    g.globalAlpha = 1; g.fillStyle = glow; g.beginPath(); g.arc(0, 0, 130, 0, 7); g.fill();
+    ring(70, 3, 0.9);
+  }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  return tex;
+}
+const glowMat = (opts) => new THREE.MeshBasicMaterial({ color: HOLO, transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending, side: THREE.DoubleSide, ...opts });
+const projector = new THREE.Group();
+scene.add(projector);
+const padOuter = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), glowMat({ map: padTexture("outer"), opacity: 0.55 }));
+const padInner = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), glowMat({ map: padTexture("inner"), opacity: 0.55 }));
+const emitter = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), glowMat({ map: padOuter.material.map, opacity: 0.18 }));
+for (const m of [padOuter, padInner, emitter]) { m.rotation.x = -Math.PI / 2; projector.add(m); }
+padInner.position.y = 0.0005;
+
+const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.2, 1, 64, 1, true), new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uColor: { value: HOLO.clone() }, uStrength: { value: 0.16 } },
+  vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `varying vec2 vUv; uniform float uTime; uniform vec3 uColor; uniform float uStrength;
+    void main() {
+      float fade = pow(1.0 - vUv.y, 1.8) * smoothstep(0.0, 0.05, vUv.y);
+      float streak = 0.55 + 0.45 * sin(vUv.x * 120.0 + uTime * 0.7) * sin(vUv.x * 37.0 - uTime * 0.4);
+      gl_FragColor = vec4(uColor * fade * streak * uStrength, 1.0);
+    }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+}));
+projector.add(beam);
+
+const DUST = 220, dustPos = new Float32Array(DUST * 3), dustSeed = Float32Array.from({ length: DUST }, Math.random);
+const dustGeo = new THREE.BufferGeometry();
+dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: HOLO, size: 0.004, transparent: true, opacity: 0.8,
+  depthWrite: false, blending: THREE.AdditiveBlending }));
+projector.add(dust);
+
+const scan = new THREE.Group();            // a ring of light that slides up and down the model
+scan.add(new THREE.Mesh(new THREE.RingGeometry(0.97, 1, 128), glowMat({ opacity: 0.8 })),
+  new THREE.Mesh(new THREE.CircleGeometry(1, 96), glowMat({ opacity: 0.035 })));
+scan.children.forEach((m) => (m.rotation.x = -Math.PI / 2));
+projector.add(scan);
+let grid = null;
+
+let bounds = new THREE.Box3(new THREE.Vector3(-0.2, 0, -0.2), new THREE.Vector3(0.2, 0.25, 0.2));
+let padR = 0.4, beamH = 0.4;
+function layoutProjector() {
+  padR = radius * 1.35;
+  const top = Math.max(bounds.max.y, 0.05);
+  projector.position.set(center.x, 0, center.z);
+  padOuter.scale.set(padR * 2, padR * 2, 1);
+  padInner.scale.set(padR * 1.25, padR * 1.25, 1);
+  beamH = top + radius * 0.35;
+  beam.scale.set(padR * 0.75, beamH, padR * 0.75); beam.position.y = beamH / 2;
+  emitter.scale.set(padR * 1.1, padR * 1.1, 1); emitter.position.y = top + radius * 0.65;
+  dust.material.size = Math.max(radius * 0.012, 0.002);
+  if (grid) { projector.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
+  grid = new THREE.GridHelper(padR * 6, 36, 0x1d6f93, 0x123a52);
+  grid.material.transparent = true; grid.material.opacity = 0.16; grid.position.y = -0.001;
+  projector.add(grid);
+}
+const beamRadiusAt = (y) => (0.2 + 0.8 * Math.min(Math.max(y / beamH, 0), 1)) * beam.scale.x;
+function animateProjector(t, reveal) {
+  padOuter.rotation.z = t * 0.05; padInner.rotation.z = -t * 0.11; emitter.rotation.z = -t * 0.04;
+  beam.material.uniforms.uTime.value = t;
+  const lo = Math.max(bounds.min.y, 0), hi = Math.max(bounds.max.y, lo + 0.01);
+  const y = reveal < 1 ? lo + (hi - lo) * reveal : lo + (hi - lo) * (0.5 + 0.5 * Math.sin(t * 0.7));
+  scan.position.y = y;
+  const r = beamRadiusAt(y) * 1.02; scan.scale.set(r, 1, r);
+  scan.children[0].material.opacity = reveal < 1 ? 0.95 : 0.45 + 0.15 * Math.sin(t * 3);
+  for (let i = 0; i < DUST; i++) {
+    const sd = dustSeed[i], h = (sd * 7 + t * 0.05 * (0.5 + sd)) % 1;
+    const rr = beamRadiusAt(h * beamH) * Math.sqrt((sd * 13.7) % 1), a = sd * 50 + t * 0.15 * (sd - 0.5);
+    dustPos[i * 3] = Math.cos(a) * rr; dustPos[i * 3 + 1] = h * beamH; dustPos[i * 3 + 2] = Math.sin(a) * rr;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+}
 
 // wind streaks and load arrows (shown during those tests)
 const effects = new THREE.Group();
@@ -129,10 +246,9 @@ function rebuild(keepView = true) {
     assembly.add(m.group);
   }
   const box = new THREE.Box3().setFromObject(assembly);
-  if (!box.isEmpty()) { box.getCenter(center); radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.05); }
-  else { center.set(0, 0.1, 0); radius = 0.3; }
-  buildFloor(radius);
-  scan.scale.set(radius * 2.6, radius * 2.6, 1);
+  if (!box.isEmpty()) { box.getCenter(center); radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.05); bounds = box; }
+  else { center.set(0, 0.1, 0); radius = 0.3; bounds = new THREE.Box3(new THREE.Vector3(-0.2, 0, -0.2), new THREE.Vector3(0.2, 0.25, 0.2)); }
+  layoutProjector();
   if (!keepView) fitView();
   if (state.selected && !meshes.has(state.selected)) state.selected = null;
   placeParts(true);
@@ -169,20 +285,22 @@ function placeParts(instant) {
 function paint() {
   const res = state.testResult;
   for (const [id, m] of meshes) {
-    let color = m.color, fillOp = 0.12, lineOp = 0.9;
+    let color = m.color, fillOp = 0.06, lineOp = 0.9;
     if (res && res.parts[id]) {
       const r = res.parts[id];
       color = state.test === "heat" ? heatColor(r.ratio) : statusColor(r.ratio);
-      fillOp = 0.22;
+      fillOp = 0.12;
     }
-    if (id === state.selected) { color = SELECT; fillOp = 0.28; }
+    if (id === state.selected) { color = SELECT; fillOp = 0.16; }
     const dim = state.hidden.has(id) || (state.isolated && state.selected && id !== state.selected);
     m.group.visible = !state.hidden.has(id);
     m.fill.material.color.copy(color); m.lines.material.color.copy(color);
-    m.fill.material.opacity = dim ? 0.02 : fillOp;
+    m.fillOp = dim ? 0.02 : fillOp;
+    m.fill.material.opacity = m.fillOp;
     m.lineOp = dim ? 0.06 : lineOp * (["sphere", "torus", "capsule"].includes(m.part.shape) ? 0.5 : 1);
     m.lines.material.opacity = m.lineOp;
   }
+  refreshCallouts();
 }
 function statusColor(ratio) {
   if (ratio <= 0.5) return STATUS.ok.clone().lerp(STATUS.warn, ratio / 0.5 * 0.35);
@@ -198,10 +316,10 @@ function heatColor(ratio) {
 function resize() {
   const r = canvas.getBoundingClientRect();
   renderer.setSize(r.width, r.height, false);
+  composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(r.width, r.height);
   camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(canvas);
-const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   if (Math.abs(state.splitShown - state.split) > 0.001) {
@@ -211,16 +329,19 @@ renderer.setAnimationLoop(() => {
     camera.position.copy(orbit.target).add(offset);
     placeParts(false);
   }
-  scan.position.set(center.x, center.y + Math.sin(t * 0.8) * radius * 0.9, center.z);
-  scan.material.opacity = 0.05 + 0.03 * Math.sin(t * 3);
-  for (const [id, m] of meshes) {   // gentle shimmer; parts that use power pulse
+  const reveal = Math.min((t - state.revealAt) / 1.8, 1);
+  animateProjector(t, reveal);
+  const lo = Math.max(bounds.min.y, 0), span = Math.max(bounds.max.y - lo, 0.01);
+  for (const [id, m] of meshes) {   // parts materialise as the scan passes them, then shimmer; powered parts pulse
+    const shown = reveal >= 1 ? 1 : Math.min(Math.max((reveal * 1.15 - (m.base.y - lo) / span) * 5, 0), 1);
     const pulse = m.part.power_w > 0 && (state.test === "power" || state.test === "heat") ? 0.5 + 0.5 * Math.sin(t * 6 + id.charCodeAt(0)) : 0;
-    m.lines.material.opacity = (m.lineOp ?? 0.9) * (0.9 + 0.1 * Math.sin(t * 2 + id.charCodeAt(1)));
-    if (pulse) m.fill.material.opacity = 0.12 + 0.18 * pulse;
+    m.lines.material.opacity = (m.lineOp ?? 0.9) * (0.9 + 0.1 * Math.sin(t * 2 + id.charCodeAt(1))) * shown;
+    m.fill.material.opacity = (pulse ? m.fillOp + 0.1 * pulse : m.fillOp ?? 0.06) * shown;
   }
   if (state.anim) state.anim(dt, t);
   orbit.update();
-  renderer.render(scene, camera);
+  if (state.glow) composer.render(); else renderer.render(scene, camera);
+  drawHud(dt, t, reveal);
 });
 
 // ---------- picking ----------
@@ -324,7 +445,10 @@ async function openBlueprint(id, keepView = false) {
   try { r = await api(`/api/blueprints/${id}`); } catch (err) { return toast(err.message); }
   const switching = !state.bp || state.bp.id !== id;
   state.bp = r.blueprint; state.summary = r.summary; state.version = r.blueprint.version; state.dirty = false;
-  if (switching) { state.selected = null; state.hidden.clear(); state.isolated = false; state.testResult = null; clearEffects(); }
+  if (switching) {
+    state.selected = null; state.hidden.clear(); state.isolated = false; state.testResult = null; state.history = [];
+    state.revealAt = clock.elapsedTime; clearEffects();
+  }
   history.replaceState(null, "", `/blueprints?id=${id}`);
   $("#bp-name").value = state.bp.name; $("#bp-name").disabled = false;
   $("#empty-state").hidden = true;
@@ -334,7 +458,7 @@ async function openBlueprint(id, keepView = false) {
   setSave("Saved");
 }
 function closeBlueprint() {
-  state.bp = null; state.selected = null; state.testResult = null;
+  state.bp = null; state.selected = null; state.testResult = null; state.history = [];
   $("#bp-name").value = ""; $("#bp-name").disabled = true; $("#empty-state").hidden = false;
   history.replaceState(null, "", "/blueprints");
   rebuild(); renderStats(); renderPartForm(); renderPartList(); showHeadline(null);
@@ -484,14 +608,169 @@ function mass(p) {
     torus: 2 * Math.PI ** 2 * x * y * y, capsule: Math.PI * x * x * y + 4 / 3 * Math.PI * x ** 3 }[p.shape];
   return v * (p.infill ?? 1) * state.meta.materials[p.material].density;
 }
+const kg = (v) => (v < 1 ? `${(v * 1000).toFixed(0)} g` : `${v.toFixed(2)} kg`);
+function totals() {
+  const parts = state.bp.parts, total = parts.reduce((a, p) => a + mass(p), 0);
+  return {
+    total, power: parts.reduce((a, p) => a + Math.max(p.power_w, 0), 0), battery: parts.reduce((a, p) => a + p.battery_wh, 0),
+    com: total > 0 ? parts.reduce((a, p) => a + mass(p) * p.position[1], 0) / total : 0,
+  };
+}
 function renderStats() {
-  const s = $("#stats");
-  if (!state.bp) return (s.innerHTML = "");
-  const total = state.bp.parts.reduce((a, p) => a + mass(p), 0);
-  const power = state.bp.parts.reduce((a, p) => a + Math.max(p.power_w, 0), 0);
-  const battery = state.bp.parts.reduce((a, p) => a + p.battery_wh, 0);
-  s.innerHTML = `PARTS <b>${state.bp.parts.length}</b><br>MASS <b>${total < 1 ? (total * 1000).toFixed(0) + " g" : total.toFixed(2) + " kg"}</b>`
-    + (power ? `<br>POWER <b>${power.toFixed(1)} W</b>` : "") + (battery ? `<br>BATTERY <b>${battery} Wh</b>` : "");
+  const box = $("#telemetry"), read = $("#readouts");
+  box.hidden = read.hidden = !state.bp;
+  if (!state.bp) return;
+  const t = totals(), runtime = t.power > 0 && t.battery > 0 ? t.battery / t.power : 0;
+  const rows = [["Parts", state.bp.parts.length], ["Mass", kg(t.total)], ["Power", t.power ? `${num(t.power)} W` : "none"],
+    ["Battery", t.battery ? `${num(t.battery)} Wh` : "none"],
+    ["Runtime", runtime ? (runtime < 1 ? `${Math.round(runtime * 60)} min` : `${num(runtime)} h`) + " flat out" : "n/a"],
+    ["Balance", `${num(t.com)} m up`]];
+  box.replaceChildren(el("h4", "", "Telemetry"));
+  for (const [k, v] of rows) { const d = el("div", "row"); d.append(el("span", "", k), el("b", "", String(v))); box.appendChild(d); }
+  const res = state.testResult;
+  if (res && state.test) {
+    const worst = Math.max(0, ...Object.values(res.parts).map((r) => r.ratio));
+    const m = el("div", `meter ${worst > 1 ? "fail" : worst > 0.5 ? "warn" : "ok"}`);
+    const bar = el("i"); bar.style.setProperty("--v", Math.min(worst, 1.25) / 1.25);
+    m.append(el("span", "", "Worst part"), el("b", "", `${Math.round(worst * 100)}%`), bar);
+    box.appendChild(m);
+  }
+}
+
+// ---------- HUD: status line, readout charts and callouts that point at parts ----------
+function statusText(reveal) {
+  if (!state.bp) return "Standby · awaiting blueprint";
+  if (reveal < 1) return `Materialising ${state.bp.name} · ${Math.round(reveal * 100)}%`;
+  if (state.testResult && state.test) {
+    const fails = Object.values(state.testResult.parts).filter((r) => r.status === "fail").length;
+    return `Test · ${state.meta.situations[state.test].label} · ${state.testResult.tips ? "tips over" : fails ? `${fails} failing` : "all within limits"}`;
+  }
+  if (gizmo.object && selectedPart()) return `Manipulating · ${selectedPart().name}`;
+  if (state.split > 0.01) return `Dissection · split ${Math.round(state.split * 100)}%`;
+  if (state.isolated && selectedPart()) return `Isolated · ${selectedPart().name}`;
+  return `Scanning · ${state.bp.parts.length} parts locked`;
+}
+function chartData() {
+  const res = state.testResult, parts = state.bp.parts;
+  if (res && state.test) {
+    const bars = parts.map((p) => ({ v: Math.min((res.parts[p.id]?.ratio || 0) / 1.25, 1), s: res.parts[p.id]?.status || "ok" }));
+    return { title: `Stress · ${state.meta.situations[state.test].label}`, bars, traceTitle: "Worst part · live", trace: state.history, limit: 1 / 1.25 };
+  }
+  const masses = parts.map(mass), top = Math.max(...masses, 1e-9);
+  const lo = Math.max(bounds.min.y, 0), span = Math.max(bounds.max.y - lo, 0.01), bins = new Array(24).fill(0);
+  parts.forEach((p, i) => { bins[Math.min(23, Math.max(0, Math.floor(((p.position[1] - lo) / span) * 24)))] += masses[i]; });
+  const peak = Math.max(...bins, 1e-9);
+  return { title: "Mass distribution", bars: masses.map((m) => ({ v: m / top, s: "holo" })),
+    traceTitle: "Mass by height (low → high)", trace: bins.map((b) => b / peak), limit: null };
+}
+const CHART = { holo: "#39d0ff", ok: "#3ddc97", warn: "#ffc857", fail: "#ff5d5d" };
+const shownBars = [];
+function sized(c) {        // keep a chart canvas's pixels matched to its size on screen
+  const w = Math.round(c.clientWidth * devicePixelRatio), h = Math.round(c.clientHeight * devicePixelRatio);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return c;
+}
+function drawSpectrum(bars, dt) {
+  const c = sized($("#spectrum")), g = c.getContext("2d"), w = c.width, h = c.height;
+  g.clearRect(0, 0, w, h);
+  const list = bars.length > 28 ? [...bars].sort((a, b) => b.v - a.v).slice(0, 28) : bars;
+  const n = Math.max(list.length, 1), gap = 3 * devicePixelRatio, bw = (w - gap * (n - 1)) / n, seg = 4 * devicePixelRatio, rows = Math.floor(h / (seg + 2));
+  list.forEach((b, i) => {
+    shownBars[i] = (shownBars[i] ?? 0) + (b.v - (shownBars[i] ?? 0)) * Math.min(1, dt * 6);
+    const lit = Math.max(1, Math.round(shownBars[i] * rows));
+    for (let r = 0; r < rows; r++) {
+      g.globalAlpha = r < lit ? (r === lit - 1 ? 1 : 0.75) : 0.08;
+      g.fillStyle = CHART[b.s] || CHART.holo;
+      g.fillRect(i * (bw + gap), h - (r + 1) * (seg + 2), bw, seg);
+    }
+  });
+  g.globalAlpha = 1;
+}
+function drawTrace(points, limit) {
+  const c = sized($("#trace")), g = c.getContext("2d"), w = c.width, h = c.height, pad = 4 * devicePixelRatio;
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = "rgba(57,208,255,.15)"; g.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, (h / 4) * i); g.lineTo(w, (h / 4) * i); g.stroke(); }
+  if (limit != null) {
+    const y = h - pad - limit * (h - 2 * pad);
+    g.setLineDash([6, 4]); g.strokeStyle = "rgba(255,93,93,.7)"; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); g.setLineDash([]);
+  }
+  if (!points.length) return;
+  if (points.length === 1) points = [points[0], points[0]];
+  const x = (i) => (i / (points.length - 1)) * w, y = (v) => h - pad - Math.min(v, 1) * (h - 2 * pad);
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, "rgba(57,208,255,.45)"); grad.addColorStop(1, "rgba(57,208,255,0)");
+  g.beginPath(); g.moveTo(0, h);
+  points.forEach((v, i) => g.lineTo(x(i), y(v)));
+  g.lineTo(w, h); g.closePath(); g.fillStyle = grad; g.fill();
+  g.beginPath(); points.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v))));
+  g.strokeStyle = CHART.holo; g.lineWidth = 2 * devicePixelRatio; g.stroke();
+  const last = points[points.length - 1];
+  g.fillStyle = "#fff"; g.beginPath(); g.arc(x(points.length - 1), y(last), 3 * devicePixelRatio, 0, 7); g.fill();
+}
+
+let callouts = [];
+function refreshCallouts() {
+  const box = $("#callouts");
+  box.replaceChildren();
+  callouts = [];
+  if (!state.bp) return;
+  const res = state.testResult;
+  const add = (id, title, value, cls) => {
+    const m = meshes.get(id);
+    if (!m || !m.group.visible || callouts.some((c) => c.id === id)) return;
+    const node = el("div", `callout ${cls}`);
+    node.append(el("b", "", title), el("span", "", value));
+    box.appendChild(node);
+    callouts.push({ id, node, cls });
+  };
+  const sel = selectedPart();
+  if (sel) add(sel.id, sel.name, `${kg(mass(sel))} · ${state.meta.materials[sel.material].label}`, "sel");
+  if (res && state.test) {
+    Object.entries(res.parts).sort((a, b) => b[1].ratio - a[1].ratio).slice(0, 3).forEach(([id, r]) => {
+      const p = state.bp.parts.find((q) => q.id === id);
+      if (p) add(id, p.name, `${num(r.value)} ${r.unit} · ${Math.round(r.ratio * 100)}%`, r.status);
+    });
+  } else {
+    [...state.bp.parts].sort((a, b) => mass(b) - mass(a)).slice(0, 3).forEach((p) => add(p.id, p.name, kg(mass(p)), "holo"));
+  }
+  callouts = callouts.slice(0, isPhone() ? 2 : 4);
+  [...box.children].forEach((n) => { if (!callouts.some((c) => c.node === n)) n.remove(); });
+}
+const projected = new THREE.Vector3();
+function placeCallouts(visible) {
+  const w = canvas.clientWidth, h = canvas.clientHeight, lines = [], taken = [];
+  const items = callouts.map((c) => {
+    meshes.get(c.id)?.group.getWorldPosition(projected);
+    projected.project(camera);
+    return { c, x: ((projected.x + 1) / 2) * w, y: ((1 - projected.y) / 2) * h, on: visible && projected.z < 1 && Math.abs(projected.x) < 1 && Math.abs(projected.y) < 1 };
+  }).sort((a, b) => a.y - b.y);
+  for (const it of items) {
+    it.c.node.hidden = !it.on;
+    if (!it.on) continue;
+    const side = it.x > w / 2 ? 1 : -1;
+    let ly = Math.max(52, it.y - 48);
+    for (const t of taken) if (t.side === side && Math.abs(t.ly - ly) < 40) ly = t.ly + 40;
+    taken.push({ side, ly });
+    const elbow = it.x + side * 30, lx = Math.min(Math.max(elbow + side * 50, 8), w - 8);
+    lines.push(`<g class="${it.c.cls}"><circle cx="${it.x}" cy="${it.y}" r="3"/><circle cx="${it.x}" cy="${it.y}" r="8" class="halo"/>`
+      + `<polyline points="${it.x},${it.y} ${elbow},${ly} ${lx},${ly}"/></g>`);
+    it.c.node.style.transform = `translate(${side > 0 ? lx + 4 : lx - 4}px, ${ly}px) translate(${side > 0 ? "0" : "-100%"}, -50%)`;
+  }
+  $("#callout-lines").innerHTML = lines.join("");
+}
+let lastStatus = "", chartTimer = 0;
+function drawHud(dt, t, reveal) {
+  const text = statusText(reveal);
+  if (text !== lastStatus) { $("#status-text").textContent = text; lastStatus = text; }
+  placeCallouts(!!state.bp && reveal >= 1);
+  chartTimer += dt;
+  if (!state.bp || $("#readouts").hidden || chartTimer < 1 / 30) return;
+  chartTimer = 0;
+  const d = chartData();
+  if ($("#spectrum-title").textContent !== d.title) { $("#spectrum-title").textContent = d.title; $("#trace-title").textContent = d.traceTitle; }
+  drawSpectrum(d.bars, 1 / 30);
+  drawTrace(d.trace, d.limit);
 }
 
 // ---------- tools: split, spin, move, isolate ----------
@@ -512,6 +791,11 @@ $("#move").addEventListener("click", (e) => {
 $("#isolate").addEventListener("click", () => { if (!state.selected) return toast("Select a part first."); state.isolated = true; paint(); });
 $("#show-all").addEventListener("click", () => { state.isolated = false; state.hidden.clear(); paint(); renderPartList(); });
 $("#fit").addEventListener("click", fitView);
+$("#glow").classList.toggle("on", state.glow);
+$("#glow").addEventListener("click", (e) => {
+  state.glow = !state.glow; e.target.classList.toggle("on", state.glow);
+  try { localStorage.setItem("corvis-holo-glow", state.glow ? "on" : "off"); } catch (_) { /* private mode */ }
+});
 
 // ---------- tabs and phone panels ----------
 function showTab(name) {
@@ -531,7 +815,8 @@ function renderSituations() {
     b.type = "button";
     b.addEventListener("click", () => {
       state.test = state.test === key ? null : key;
-      if (!state.test) { state.testResult = null; clearEffects(); paint(); showHeadline(null); $("#results").innerHTML = ""; }
+      state.history = [];
+      if (!state.test) { state.testResult = null; clearEffects(); paint(); showHeadline(null); renderStats(); $("#results").innerHTML = ""; }
       renderSituations(); renderParams();
       if (state.test) runTest(true);
     });
@@ -572,7 +857,9 @@ async function runTest(animate = false) {
   try { r = await api(`/api/blueprints/${state.bp.id}/test`, { method: "POST", body: { situation: state.test, params: state.params[state.test] || {} } }); }
   catch (err) { return toast(err.message); }
   state.testResult = r;
-  paint(); renderResults(r); showHeadline(r); renderPartForm();
+  state.history.push(Math.min(Math.max(0, ...Object.values(r.parts).map((x) => x.ratio)) / 1.25, 1));
+  if (state.history.length > 40) state.history.shift();
+  paint(); renderResults(r); showHeadline(r); renderPartForm(); renderStats();
   playEffect(r, animate);
 }
 function showHeadline(r) {

@@ -34,9 +34,13 @@
 
   <main class="stage" id="stage">
     <canvas id="holo" aria-label="Blueprint hologram"></canvas>
+    <svg class="callout-lines" id="callout-lines" aria-hidden="true"></svg>
+    <div class="callouts" id="callouts" aria-hidden="true"></div>
+    <div class="corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="status-strip" id="status-strip"><span class="dot"></span><b>HOLO-PROJECTOR</b><span id="status-text">STANDBY</span></div>
     <div class="tooltip" id="tooltip" hidden></div>
     <div class="empty-state" id="empty-state">
-      <div class="ring"></div>
+      <h3>Projector standing by</h3>
       <p>Open a blueprint from the library, or press <b>+ New</b>.</p>
       <p class="sub">Tip: say <b>“Corvis, design a blueprint for…”</b> below.</p>
     </div>
@@ -48,8 +52,15 @@
       <button type="button" id="isolate" title="Show only the selected part">Isolate</button>
       <button type="button" id="show-all" title="Show every part">Show all</button>
       <button type="button" id="fit" title="Fit the view">Fit</button>
+      <button type="button" id="glow" class="toggle on" title="Hologram glow (turn off on slow devices)">Glow</button>
     </div>
-    <div class="stats" id="stats"></div>
+    <div class="hudbox telemetry" id="telemetry" hidden></div>
+    <div class="hudbox readouts" id="readouts" hidden>
+      <h4 id="spectrum-title">Mass distribution</h4>
+      <canvas id="spectrum"></canvas>
+      <h4 id="trace-title">Mass profile</h4>
+      <canvas id="trace"></canvas>
+    </div>
   </main>
 
   <aside class="panel" id="panel" aria-label="Blueprint tools">
