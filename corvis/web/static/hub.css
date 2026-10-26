@@ -290,11 +290,29 @@
 .k-paths, .k-arch { margin: 0; padding-left: 18px; font-size: 13.5px; }
 .k-note { background: color-mix(in srgb, var(--warn) 12%, transparent); padding: 8px 10px; border-radius: var(--radius-s); font-size: 13.5px; }
 .warn { color: var(--warn); }
-.k-graph { padding: 8px; }
-.k-graph canvas { display: block; width: 100%; height: min(64vh, 620px); cursor: grab; touch-action: none; }
-.k-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); padding: 6px 8px 0; }
+.brain-view { padding: 8px 8px 10px; overflow: hidden; }
+.brain-stage { position: relative; border-radius: var(--radius-m);
+  background: radial-gradient(ellipse at 45% 42%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%); }
+.brain-stage canvas { display: block; width: 100%; aspect-ratio: 1.15; height: auto; max-height: min(66vh, 640px); cursor: grab; touch-action: none; }
+.brain-empty { position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; color: var(--muted); margin: 0; padding: 0 16px; }
+.brain-time { display: flex; align-items: center; gap: 12px; padding: 6px 8px 0; }
+.brain-time input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.brain-when { min-width: 92px; text-align: right; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.brain-spark { padding: 2px 8px 0; }
+.brain-spark svg { display: block; width: 100%; height: 34px; }
+.brain-spark .area { fill: color-mix(in srgb, var(--accent) 16%, transparent); }
+.brain-spark .line { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.brain-spark .mark { stroke: var(--text); stroke-width: 1; opacity: .5; vector-effect: non-scaling-stroke; }
+.brain-stats { margin: 6px 8px 0; font-size: 13.5px; }
+.k-legend { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); padding: 8px 8px 0; }
 .k-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
-.k-graph .hint { padding: 0 8px; }
+.brain-view .k-legend small { color: var(--muted); opacity: .75; margin-left: 2px; }
+.brain-view .hint { padding: 0 8px; }
+@media (max-width: 600px) {
+  .brain-time { flex-wrap: wrap; }
+  .brain-time input { order: 3; flex-basis: 100%; }
+  .brain-when { margin-left: auto; }
+}
 .k-review { margin-bottom: 12px; }
 .k-reason { margin: 4px 0 10px; font-size: 14px; }
 .k-diff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }

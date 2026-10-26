@@ -569,6 +569,12 @@ brain/
   freshness 20%, consistency 15%, confidence 15%, update history 5%. Files not verified for
   90 days lose 15 points and are queued for re-verification by the daily health check.
   95-100 Excellent, 80-94 Healthy, 60-79 Needs Verification, 40-59 Aging, 0-39 Potentially Outdated.
+- **The brain view** (Knowledge → Graph): every knowledge file is a glowing neuron in the brain
+  region for its subject (Robotics in the motor cortex, AI in the occipital lobe, Personal in the
+  temporal lobe's memory, and so on), sized and lit by its health, with signals running along the
+  connections between topics. **Replay growth** plays the brain's history from the first thing
+  Corvis learned to today, with a growth curve under it; while a learning session runs, new
+  neurons sprout live.
 - **Memory first**: before each answer, matching knowledge files, earlier conversations and
   projects are attached to your message, and Corvis checks `knowledge_search` before the web.
 - **Continuity**: a minute or two after each conversation (and on shutdown, and after a crash on

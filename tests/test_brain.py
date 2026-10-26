@@ -124,6 +124,8 @@ def test_create_writes_structured_markdown_and_links(tmp_path):
     assert kb.neighbours(a["id"])
     g = kb.graph()
     assert {n["id"] for n in g["nodes"]} >= {a["id"], b["id"]} and g["edges"]
+    node = next(n for n in g["nodes"] if n["id"] == a["id"])          # the brain view replays growth by date
+    assert node["created"] == dt.date.today().isoformat() and node["confidence"] == 85 and "health" in node
     hits = kb.search("servo pwm")
     assert hits and hits[0]["id"] == a["id"]
     assert commits

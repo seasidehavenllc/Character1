@@ -336,7 +336,9 @@ class KnowledgeBase:
     def graph(self) -> dict:
         docs = self.all()
         ids = {d["id"] for d in docs}
-        nodes = [{"id": d["id"], "title": d["title"], "category": d["category"], "health": d["health"]["score"]}
+        nodes = [{"id": d["id"], "title": d["title"], "category": d["category"], "health": d["health"]["score"],
+                  "confidence": int(d.get("confidence") or 0), "created": str(d.get("created") or "")[:10],
+                  "last_verified": str(d.get("last_verified") or "")[:10]}
                  for d in docs]
         edges, seen = [], set()
         for d in docs:
