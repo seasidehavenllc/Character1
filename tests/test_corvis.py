@@ -104,7 +104,8 @@ class ScriptedProvider:
         self.started += 1
         self.transcript = list(transcript)
 
-    def send(self, user_text, run_tool, on_event):
+    def send(self, user_text, run_tool, on_event, images=None):
+        self.last_text, self.last_images = user_text, images
         results = [run_tool(name, args) for name, args in self.calls]
         return f"[{self.model.id}] " + " | ".join(r for r, _ in results)
 
@@ -207,3 +208,27 @@ def test_local_models_skip_cloud_only_options():
     p.start("SYS", [], [])
     assert p.send("hi", lambda n, a: ("", False), lambda e: None) == "Hi."
     assert "reasoning_effort" not in requests[0]
+
+
+def test_attachments_are_saved_inlined_and_sent_as_images(tmp_path):
+    from corvis.brain import Attachment
+
+    files = [Attachment("main.py", "text/x-python", b"print('hi')\n"), Attachment("photo.png", "image/png", b"img")]
+    corvis = make_corvis(tmp_path)                     # model "a" is a cloud model: it can see images
+    corvis.chat("look", attachments=files)
+    assert (tmp_path / "uploads" / "main.py").exists() and (tmp_path / "uploads" / "photo.png").exists()
+    assert "print('hi')" in corvis.provider.last_text
+    assert corvis.provider.last_images == [("image/png", "aW1n")]
+
+    corvis.switch_model("b")                           # "b" is a local, non-vision model
+    corvis.chat("and now?", attachments=files)
+    assert corvis.provider.last_images == [] and "can't see images" in corvis.provider.last_text
+
+
+def test_stop_cancels_before_next_tool(tmp_path):
+    corvis = make_corvis(tmp_path, calls=[("list_courses", {})])
+    corvis.cancel.set()
+    original = corvis.chat
+    # chat() clears the flag at the start; set it again from the "other thread" right after.
+    corvis.cancel = type("AlwaysSet", (), {"clear": lambda self: None, "is_set": lambda self: True})()
+    assert original("go") == "Stopped."

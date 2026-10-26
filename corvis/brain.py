@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import re
+import threading
 import time
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from .account import Account
@@ -11,7 +15,7 @@ from .bodies.base import Body
 from .identity import Identity
 from .knowledge import KnowledgeBase
 from .memory import MemoryStore
-from .models import ModelCatalog
+from .models import ModelCatalog, supports_vision
 from .providers import Provider, make_provider
 from .workshop import Workshop
 
@@ -93,6 +97,19 @@ CORE_TOOLS: list[dict[str, Any]] = [
 ]
 
 ProviderFactory = Callable[..., Provider]
+MAX_INLINE_TEXT = 100_000
+IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+
+@dataclass
+class Attachment:
+    name: str
+    media_type: str
+    data: bytes
+
+
+class Cancelled(Exception):
+    pass
 
 
 class Corvis:
@@ -114,6 +131,12 @@ class Corvis:
         self.transcript: list[dict[str, str]] = []  # plain text, shared across models
         self.provider: Provider | None = None
         self._last_sync_try = 0.0
+        self.cancel = threading.Event()   # set from another thread to stop the current reply
+
+    def load_transcript(self, transcript: list[dict[str, str]]) -> None:
+        """Continue a saved conversation (or start a new one with an empty list)."""
+        self.transcript = list(transcript)
+        self.provider = None
 
     # --- switching -------------------------------------------------------------------
 
@@ -171,7 +194,37 @@ class Corvis:
 
     # --- conversation ----------------------------------------------------------------
 
-    def chat(self, user_text: str, on_event: Callable[[str], None] = lambda e: None) -> str:
+    def _with_attachments(self, text: str, attachments: list[Attachment]) -> tuple[str, list[tuple[str, str]]]:
+        """Save uploads to the workspace; inline text files; return (text for the model, images)."""
+        notes, images = [], []
+        for a in attachments:
+            safe = re.sub(r"[^\w.\- ]", "_", a.name).strip() or "upload"
+            path = self.workshop.root / "uploads" / safe
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(a.data)
+            rel = f"uploads/{safe}"
+            if a.media_type in IMAGE_TYPES:
+                images.append((a.media_type, base64.b64encode(a.data).decode()))
+                notes.append(f"[Image attached: {rel}]")
+                continue
+            try:
+                content = a.data.decode("utf-8")
+            except UnicodeDecodeError:
+                notes.append(f"[File attached: {rel} ({a.media_type}, {len(a.data)} bytes) — use your file tools]")
+                continue
+            if len(content) > MAX_INLINE_TEXT:
+                notes.append(f"[Large file attached: {rel} — read it with read_file]")
+            else:
+                notes.append(f"[File attached: {rel}]\n```\n{content}\n```")
+        if images and not supports_vision(self.active):
+            notes.append(f"(Note: {self.active.label} can't see images. Tell the user, and suggest a vision model "
+                         "such as qwen2.5vl or llama3.2-vision, or a cloud model.)")
+            images = []
+        full = "\n\n".join([text, *notes]) if notes else text
+        return full, images
+
+    def chat(self, user_text: str, on_event: Callable[[str], None] = lambda e: None,
+             attachments: list[Attachment] | None = None) -> str:
         # Safety reflex: stop words halt the body before any model is consulted.
         if user_text.strip().lower().strip(".!") in STOP_WORDS:
             self.body.emergency_stop()
@@ -179,9 +232,13 @@ class Corvis:
             self.body.speak(reply)
             return reply
 
+        self.cancel.clear()
         self._choose_model(on_event)
+        user_text, images = self._with_attachments(user_text, attachments or [])
 
         def run_tool(name: str, args: dict[str, Any]) -> tuple[str, bool]:
+            if self.cancel.is_set():
+                raise Cancelled()
             on_event(f"{name}: {_summarize(args)}")
             try:
                 return self._run_tool(name, args), False
@@ -191,7 +248,10 @@ class Corvis:
         self.body.set_expression("thinking")
         try:
             try:
-                reply = self.provider.send(user_text, run_tool, on_event)
+                reply = self.provider.send(user_text, run_tool, on_event, images)
+            except Cancelled:
+                self.provider = None
+                reply = "Stopped."
             except Exception:
                 # The native history may now end mid-turn; rebuild it from the transcript next time.
                 self.provider = None
@@ -202,7 +262,7 @@ class Corvis:
                 self.catalog.home = []
                 self.catalog._home_checked = time.time()
                 self._choose_model(on_event)
-                reply = self.provider.send(user_text, run_tool, on_event)
+                reply = self.provider.send(user_text, run_tool, on_event, images)
         finally:
             self.body.set_expression("idle")
         self.transcript += [{"role": "user", "text": user_text}, {"role": "assistant", "text": reply}]

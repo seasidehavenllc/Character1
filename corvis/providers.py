@@ -28,8 +28,10 @@ class Provider(ABC):
         """Begin a fresh native conversation from a plain-text transcript."""
 
     @abstractmethod
-    def send(self, user_text: str, run_tool: ToolRunner, on_event: EventSink) -> str:
-        """Run one turn (with tool calls) and return Corvis's final reply text."""
+    def send(self, user_text: str, run_tool: ToolRunner, on_event: EventSink,
+             images: list[tuple[str, str]] | None = None) -> str:
+        """Run one turn (with tool calls) and return Corvis's final reply text.
+        `images` are (media type, base64 data) pairs attached to the user's message."""
 
 
 class AnthropicProvider(Provider):
@@ -53,8 +55,12 @@ class AnthropicProvider(Provider):
             ]
         self.messages: list[dict[str, Any]] = [{"role": t["role"], "content": t["text"]} for t in transcript]
 
-    def send(self, user_text, run_tool, on_event):
-        self.messages.append({"role": "user", "content": user_text})
+    def send(self, user_text, run_tool, on_event, images=None):
+        content: Any = user_text
+        if images:
+            content = [{"type": "image", "source": {"type": "base64", "media_type": mt, "data": data}}
+                       for mt, data in images] + [{"type": "text", "text": user_text}]
+        self.messages.append({"role": "user", "content": content})
         extra: dict[str, Any] = {}
         if self.model.fallbacks:
             extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
@@ -152,8 +158,12 @@ class OpenAIProvider(Provider):
         self.messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
         self.messages += [{"role": t["role"], "content": t["text"]} for t in transcript]
 
-    def send(self, user_text, run_tool, on_event):
-        self.messages.append({"role": "user", "content": user_text})
+    def send(self, user_text, run_tool, on_event, images=None):
+        content: Any = user_text
+        if images:
+            content = [{"type": "text", "text": user_text}] + [
+                {"type": "image_url", "image_url": {"url": f"data:{mt};base64,{data}"}} for mt, data in images]
+        self.messages.append({"role": "user", "content": content})
         turn = 0
         while True:
             turn += 1

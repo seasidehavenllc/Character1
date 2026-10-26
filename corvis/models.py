@@ -56,6 +56,19 @@ def _size_b(model_id: str) -> float:
     return float(m.group(1)) if m else 0.0
 
 
+VISION_HINTS = ("vision", "llava", "-vl", "vl:", "qwen2.5vl", "gemma3", "moondream", "minicpm-v", "bakllava")
+
+
+def supports_vision(model: ModelConfig | None) -> bool:
+    """Can this model look at images? Cloud models can; local ones only if they're vision models."""
+    if model is None:
+        return False
+    if model.provider in ("anthropic", "openai"):
+        return True
+    name = (model.api_model or model.id).lower()
+    return any(h in name for h in VISION_HINTS)
+
+
 def best_fit(ids: list[str], device: DeviceInfo) -> str:
     """The recommended model if installed, else the largest that fits in memory (~0.75 GB per billion params)."""
     if device.recommended_model in ids:
