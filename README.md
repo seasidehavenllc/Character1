@@ -451,3 +451,27 @@ a GitHub address (`owner/repo`), a folder, a `.zip`, or a marketplace (a Git rep
 Try it: in Plugins → Marketplaces, add the folder `examples/marketplace` and install
 **corvis-starter** (code-review and debugging skills, plus `/review`, `/explain` and `/plan`).
 Turn either feature off with `connectors: enabled: false` or `plugins: enabled: false` in config.yaml.
+
+## Blueprints: the hologram workshop (new)
+
+Say **"Corvis, open blueprints"** in the chat (typed or with the mic), or click **Blueprints** in the sidebar.
+The workshop opens at `/blueprints`:
+
+- **Library** (left): `+ New` starts a blueprint from a template (blank, rover, robot arm, quad drone, arc reactor);
+  click one to load it, the bin deletes it.
+- **Hologram** (middle): drag to orbit, scroll to zoom. **Split** pulls the parts apart so you can see inside,
+  **Isolate** shows just the selected part, **Move** lets you drag a part in 3D, **Fit** re-centres.
+- **Part / Parts** (right): click any part to edit its name, shape, material, size, position, rotation,
+  power, battery and how solid it is. Add new boxes, cylinders, spheres, cones, rings and capsules.
+  Everything saves by itself.
+- **Test**: run the design through a load on top, heat, a drop, wind, or a power/battery check, and drag the
+  sliders to watch the results change live. Parts turn green (fine), amber (close to the limit) or red (fails),
+  and the hologram acts it out (it bounces on a drop, tilts or tips in wind).
+- **Talk bar**: ask Corvis to change, design or test the open blueprint ("make the arm carbon fibre and test
+  it with 50 N"). His edits show up in the hologram as he makes them.
+
+Corvis has matching tools (`create_blueprint`, `edit_blueprint`, `test_blueprint`, `open_blueprints`, ...),
+and deleting a blueprint always asks you first. Blueprints are stored in `data/blueprints/`. The tests are quick
+engineering estimates for spotting weak points early, not a replacement for real CAD/FEA simulation.
+The 3D engine (three.js, MIT licence) is bundled in `corvis/web/static/vendor/three/`, so it works offline.
+Turn the feature off with `blueprints: {enabled: false}` in config.yaml.

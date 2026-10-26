@@ -360,6 +360,24 @@
   }, true);
   input.addEventListener("blur", () => setTimeout(hideSlash, 150));
 
+  // ---------- theme switch (dark by default) ----------
+  const themeBtn = $("#theme-toggle");
+  function applyTheme(light) {
+    if (light) document.documentElement.dataset.theme = "light";
+    else delete document.documentElement.dataset.theme;
+    const label = light ? "Switch to the dark theme" : "Switch to the light theme";
+    themeBtn.title = label; themeBtn.setAttribute("aria-label", label);
+    themeBtn.innerHTML = svg(light ? "i-moon" : "i-sun");
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = light ? "#f5f6fa" : "#151824";
+  }
+  applyTheme(document.documentElement.dataset.theme === "light");
+  themeBtn.addEventListener("click", () => {
+    const light = document.documentElement.dataset.theme !== "light";
+    applyTheme(light);
+    try { localStorage.setItem("corvis-theme", light ? "light" : "dark"); } catch (_) { /* private mode */ }
+  });
+
   // ---------- startup ----------
   (async () => {
     try {

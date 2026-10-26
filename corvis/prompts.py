@@ -74,6 +74,15 @@ Memory:
   save it with note_belief; when evidence contradicts a belief, revise_belief it.
 """
 
+BLUEPRINTS_ADDON = """
+Blueprints (the owner's hologram workshop):
+- When the owner says "open blueprints" (or asks to see a design), call open_blueprints.
+- Design with create_blueprint / edit_blueprint from simple parts (metres, y up, floor at y=0),
+  realistic materials and power figures. The owner watches the hologram change live.
+- Use test_blueprint to check designs (load, heat, drop, wind, power). Results are quick
+  estimates for spotting weak points, not full simulation; say so, and suggest fixes.
+"""
+
 CONNECTORS_ADDON = """
 Connectors:
 - Tools named mcp_<connector>__<action> come from connectors the owner added: outside apps and
@@ -252,6 +261,8 @@ def build_system_prompt(root: Path, tool_schemas: list[dict], text_tools: bool,
             f"- {b['name']}: {(b.get('job') or 'general help').splitlines()[0][:200]}" for b in team))
     if "create_routine" in names:
         prompt += ROUTINES_ADDON
+    if "open_blueprints" in names:
+        prompt += BLUEPRINTS_ADDON
     if any(n.startswith("mcp_") for n in names):
         prompt += CONNECTORS_ADDON
     if skills:

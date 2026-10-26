@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Blueprints · Corvis</title>
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#050912">
+  <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/blueprints.css">
+  <script type="importmap">{"imports": {"three": "/static/vendor/three/three.module.min.js"}}</script>
+</head>
+<body>
+  <header class="bar">
+    <a class="back" href="/" title="Back to chat" aria-label="Back to chat">‹ Corvis</a>
+    <button class="ghost only-phone" id="lib-toggle" type="button">Library</button>
+    <input class="bp-name" id="bp-name" aria-label="Blueprint name" spellcheck="false" placeholder="No blueprint open" disabled>
+    <span class="save-state" id="save-state"></span>
+    <span class="spacer"></span>
+    <button class="ghost" id="panel-toggle" type="button">Tools</button>
+  </header>
+
+  <aside class="library" id="library" aria-label="Blueprint library">
+    <div class="lib-head">
+      <h2>Blueprints</h2>
+      <button class="primary" id="new-toggle" type="button">+ New</button>
+    </div>
+    <div class="new-box" id="new-box" hidden>
+      <input id="new-name" placeholder="Name (optional)" maxlength="80">
+      <div class="templates" id="templates"></div>
+    </div>
+    <ul class="bp-list" id="bp-list"></ul>
+  </aside>
+
+  <main class="stage" id="stage">
+    <canvas id="holo" aria-label="Blueprint hologram"></canvas>
+    <div class="tooltip" id="tooltip" hidden></div>
+    <div class="empty-state" id="empty-state">
+      <div class="ring"></div>
+      <p>Open a blueprint from the library, or press <b>+ New</b>.</p>
+      <p class="sub">Tip: say <b>“Corvis, design a blueprint for…”</b> below.</p>
+    </div>
+    <div class="headline" id="headline" hidden></div>
+    <div class="hud">
+      <label class="split">Split <input type="range" id="split" min="0" max="100" value="0" aria-label="Split the hologram apart"></label>
+      <button type="button" id="spin" class="toggle on" title="Turn slowly">Spin</button>
+      <button type="button" id="move" class="toggle" title="Drag the selected part">Move</button>
+      <button type="button" id="isolate" title="Show only the selected part">Isolate</button>
+      <button type="button" id="show-all" title="Show every part">Show all</button>
+      <button type="button" id="fit" title="Fit the view">Fit</button>
+    </div>
+    <div class="stats" id="stats"></div>
+  </main>
+
+  <aside class="panel" id="panel" aria-label="Blueprint tools">
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="part" class="on">Part</button>
+      <button type="button" role="tab" data-tab="parts">Parts</button>
+      <button type="button" role="tab" data-tab="test">Test</button>
+    </nav>
+    <section class="tab" data-tab="part">
+      <p class="hint" id="part-empty">Click a part of the hologram to select it.</p>
+      <form id="part-form" hidden autocomplete="off">
+        <label>Name <input name="name" maxlength="60"></label>
+        <div class="row2">
+          <label>Shape <select name="shape" id="shape-select"></select></label>
+          <label>Material <select name="material" id="material-select"></select></label>
+        </div>
+        <fieldset><legend id="size-legend">Size (m)</legend>
+          <input name="size0" type="number" step="0.001"><input name="size1" type="number" step="0.001"><input name="size2" type="number" step="0.001">
+        </fieldset>
+        <fieldset><legend>Position (m)</legend>
+          <input name="pos0" type="number" step="0.005"><input name="pos1" type="number" step="0.005"><input name="pos2" type="number" step="0.005">
+        </fieldset>
+        <fieldset><legend>Rotation (°)</legend>
+          <input name="rot0" type="number" step="5"><input name="rot1" type="number" step="5"><input name="rot2" type="number" step="5">
+        </fieldset>
+        <div class="row2">
+          <label>Power (W) <input name="power_w" type="number" step="0.5"></label>
+          <label>Battery (Wh) <input name="battery_wh" type="number" step="1" min="0"></label>
+        </div>
+        <div class="row2">
+          <label>Solid % <input name="infill" type="number" step="5" min="5" max="100"></label>
+          <label>Group <input name="group" maxlength="40"></label>
+        </div>
+        <label>Notes <textarea name="notes" rows="2" maxlength="500"></textarea></label>
+        <p class="part-facts" id="part-facts"></p>
+        <div class="actions">
+          <button type="button" id="dup-part">Duplicate</button>
+          <button type="button" id="del-part" class="danger">Delete part</button>
+        </div>
+      </form>
+    </section>
+    <section class="tab" data-tab="parts" hidden>
+      <div class="add-row" id="add-row"></div>
+      <ul class="part-list" id="part-list"></ul>
+    </section>
+    <section class="tab" data-tab="test" hidden>
+      <div class="situations" id="situations"></div>
+      <div class="params" id="params"></div>
+      <div class="legend"><span class="ok">fine</span><span class="warn">close to the limit</span><span class="fail">fails</span></div>
+      <div class="results" id="results"></div>
+      <p class="hint">Quick engineering estimates for spotting weak points, not full simulation.</p>
+    </section>
+  </aside>
+
+  <form class="talk" id="talk">
+    <div class="talk-log" id="talk-log" hidden></div>
+    <div class="talk-box">
+      <button type="button" class="mic" id="mic" title="Talk to Corvis" aria-label="Talk to Corvis">🎙</button>
+      <input id="talk-input" placeholder="Tell Corvis what to change, design or test…" autocomplete="off" aria-label="Message Corvis">
+      <button type="submit" class="primary" id="talk-send">Send</button>
+    </div>
+  </form>
+
+  <div class="toast" id="toast" hidden></div>
+  <script type="module" src="/static/blueprints.js"></script>
+</body>
+</html>

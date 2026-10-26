@@ -43,3 +43,6 @@ This is your own source code. Rules for editing it:
 - Plugins (`plugin_store.py`): installing a plugin with Python code needs the owner's explicit OK;
   keep zip-slip, symlink and marketplace-path checks; agents get no tool that installs plugins or
   adds connectors — only the owner does that, from the app.
+- Blueprints (`blueprints.py`, `blueprint_sim.py`, `tools/blueprint_tools.py`, `web/static/blueprints.*`): deleting a
+  blueprint needs the owner's OK; keep the version check on saves so the owner's and Corvis's edits don't overwrite
+  each other; three.js stays vendored (no CDN); say test results are estimates.

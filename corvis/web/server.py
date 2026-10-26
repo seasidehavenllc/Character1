@@ -52,7 +52,9 @@ from ..studio import CreativeStudio
 from ..graphify_integration import GraphifyIntegration
 from ..workspace_features import WorkspaceStore
 from ..model_compare import inventory as model_inventory, compare as compare_models
+from .. import blueprint_sim
 from .. import connectors as connectors_mod
+from ..blueprints import MATERIALS as BP_MATERIALS, SHAPES as BP_SHAPES, TEMPLATES as BP_TEMPLATES, BlueprintStore
 from ..plugin_store import NeedsCodeApproval, PluginError, PluginStore
 from .runs import RunManager
 
@@ -213,6 +215,7 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
     routines = RoutineStore(data_dir)
     owner_file = data_dir / "owner.json"
     plugin_store = PluginStore(data_dir)
+    blueprints = BlueprintStore(data_dir)
     conns = connectors_mod.shared(data_dir, extra=plugin_store.connectors)
     ccfg = cfg.get("computer") or {}
     computer = (computer_mod.shared(data_dir, allow_private=bool(ccfg.get("allow_private")))
@@ -1095,9 +1098,68 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
             return error("Marketplace not found.", 404)
         return body(plugins_body())
 
+    # blueprints ----------------------------------------------------------------
+    async def blueprints_page(request: Request):
+        return FileResponse(STATIC / "blueprints.html", headers={"Cache-Control": "no-store"})
+
+    async def list_blueprints(request: Request):
+        return body({"blueprints": blueprints.list(),
+                     "templates": {k: {"name": v["name"], "description": v["description"]} for k, v in BP_TEMPLATES.items()},
+                     "materials": BP_MATERIALS, "shapes": list(BP_SHAPES), "situations": blueprint_sim.SITUATIONS})
+
+    async def create_blueprint(request: Request):
+        data = await request.json()
+        try:
+            bp = blueprints.create(str(data.get("name") or ""), str(data.get("template") or "blank"))
+        except ValueError as e:
+            return error(str(e))
+        return body({"blueprint": bp, "summary": blueprint_sim.summary(bp)}, 201)
+
+    async def get_blueprint(request: Request):
+        try:
+            bp = blueprints.get(request.path_params["bid"])
+        except KeyError:
+            return error("Blueprint not found.", 404)
+        return body({"blueprint": bp, "summary": blueprint_sim.summary(bp)})
+
+    async def save_blueprint(request: Request):
+        data = await request.json()
+        version = data.get("version")
+        try:
+            bp = blueprints.save(request.path_params["bid"], data, int(version) if version is not None else None)
+        except KeyError:
+            return error("Blueprint not found.", 404)
+        except ValueError as e:
+            return error(str(e), 409 if "changed since" in str(e) else 400)
+        return body({"blueprint": bp, "summary": blueprint_sim.summary(bp)})
+
+    async def delete_blueprint(request: Request):
+        try:
+            blueprints.delete(request.path_params["bid"])
+        except KeyError:
+            return error("Blueprint not found.", 404)
+        return body({"blueprints": blueprints.list()})
+
+    async def test_blueprint(request: Request):
+        data = await request.json()
+        try:
+            bp = blueprints.get(request.path_params["bid"])
+            return body(blueprint_sim.run(bp, str(data.get("situation") or ""), data.get("params") or {}))
+        except KeyError:
+            return error("Blueprint not found.", 404)
+        except ValueError as e:
+            return error(str(e))
+
     routes = [
         Route("/", index),
         Route("/studio", studio_page),
+        Route("/blueprints", blueprints_page),
+        Route("/api/blueprints", list_blueprints),
+        Route("/api/blueprints", create_blueprint, methods=["POST"]),
+        Route("/api/blueprints/{bid}", get_blueprint),
+        Route("/api/blueprints/{bid}", save_blueprint, methods=["PUT"]),
+        Route("/api/blueprints/{bid}", delete_blueprint, methods=["DELETE"]),
+        Route("/api/blueprints/{bid}/test", test_blueprint, methods=["POST"]),
         Route("/workspace", workspace_page),
         Route("/api/workspace", workspace_summary),
         Route("/api/workspace/{collection}", workspace_list),

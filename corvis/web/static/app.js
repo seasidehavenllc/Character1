@@ -66,6 +66,9 @@
     browser_open: "Opened", browser_read: "Read the page", browser_click: "Clicked", browser_type: "Typed into",
     browser_press: "Pressed", browser_scroll: "Scrolled", create_routine: "Set up a routine",
     list_routines: "Checked routines", delete_routine: "Deleted a routine",
+    list_blueprints: "Checked blueprints", open_blueprints: "Opened blueprints", show_blueprint: "Read blueprint",
+    create_blueprint: "Designed blueprint", edit_blueprint: "Edited blueprint", delete_blueprint: "Deleted blueprint",
+    test_blueprint: "Tested blueprint",
   };
   const DETAIL_ARG = {
     read_file: "path", write_file: "path", edit_file: "path", delete_file: "path",
@@ -75,7 +78,11 @@
     web_search: "query", fetch_page: "url",
     look_at_image: "attachment", read_attachment: "attachment", save_attachment: "path",
     browser_open: "url", browser_press: "key_name", browser_scroll: "direction", create_routine: "name",
+    open_blueprints: "blueprint", show_blueprint: "blueprint", create_blueprint: "name", edit_blueprint: "blueprint",
+    delete_blueprint: "blueprint", test_blueprint: "situation",
   };
+  // "Corvis, open blueprints" goes straight to the hologram workshop without asking the model.
+  const OPEN_BLUEPRINTS = /^(?:hey\s+)?(?:corvis[,!.]?\s+)?(?:please\s+)?(?:open|show|launch|bring up|pull up)\s+(?:(?:the|my)\s+)?blue\s?prints?(?:\s+(?:page|workshop|library))?(?:\s+please)?[.!]?$/i;
 
   // ---------- helpers ----------
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -623,6 +630,10 @@
           detail = m ? m[1] : "";
         }
         if (name === "list_dir" && !detail) detail = "the project";
+        if (name === "open_blueprints" && ctx.live && Date.now() / 1000 - (ev.ts || 0) < 20) {
+          const target = detail.trim();
+          setTimeout(() => { location.href = "/blueprints" + (target ? `?id=${encodeURIComponent(target)}` : ""); }, 600);
+        }
         li.className = "step";
         li.dataset.tool = name;
         li.innerHTML = `<div class="step-line"><span class="step-label"></span><span class="step-detail"></span></div>`;
@@ -940,6 +951,11 @@
   // ---------- sending ----------
   async function send() {
     const text = el.input.value.trim();
+    if (OPEN_BLUEPRINTS.test(text) && !state.pending.length) {
+      el.input.value = "";
+      location.href = "/blueprints";
+      return;
+    }
     const ready = state.pending.filter((p) => p.status === "done");
     if ((!text && !ready.length) || state.running || state.loading) return;
     if (state.pending.some((p) => p.status === "uploading")) return toast("Still uploading. One moment.");
