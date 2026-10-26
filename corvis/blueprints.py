@@ -1,7 +1,9 @@
 """Blueprints: 3D designs Corvis and the owner build together, shown as holograms.
 
-A blueprint is a named assembly of simple parts (boxes, cylinders, spheres, cones, tori,
-capsules), each with a size, position, rotation, material and optional power figures.
+A blueprint is a named assembly of parts, each with a size, position, rotation, material and
+optional power figures. Parts are basic solids (box, cylinder, sphere, cone, torus, capsule,
+tube), smooth shapes made from a 2D outline (extrude: pushed out; lathe: spun around like a
+vase or wheel rim), or real meshes imported from 3D model files (see meshes.py).
 Stored as JSON in data/blueprints/. The hologram page (/blueprints) draws them, splits them
 apart, edits them, and runs the quick tests in blueprint_sim.py.
 
@@ -19,8 +21,11 @@ import time
 import uuid
 from pathlib import Path
 
-SHAPES = ("box", "cylinder", "sphere", "cone", "torus", "capsule")
+SHAPES = ("box", "cylinder", "sphere", "cone", "torus", "capsule", "tube", "extrude", "lathe", "mesh")
+PROFILE_SHAPES = ("extrude", "lathe")
 MAX_PARTS = 300
+MAX_PROFILE_POINTS = 400
+HISTORY_KEPT = 40
 
 # density kg/m3, yield strength MPa, max service temperature C, impact toughness J/cm2 (rough)
 MATERIALS = {
@@ -69,12 +74,23 @@ def clean_part(raw: dict, existing_id: str | None = None) -> dict:
     material = {"aluminium": "aluminum", "carbon_fibre": "carbon_fiber", "carbon": "carbon_fiber"}.get(material, material)
     if material not in MATERIALS:
         raise ValueError(f"Unknown material '{material}'. Use one of: {', '.join(MATERIALS)}.")
+    profile, mesh_ref, natural = None, None, [0.1, 0.1, 0.1]
+    if shape in PROFILE_SHAPES:
+        profile = _profile(raw.get("profile"), shape)
+        w, h = _bbox2(profile, shape)
+        natural = [w, h, 0.05] if shape == "extrude" else [w * 2, h, w * 2]
+    elif shape == "mesh":
+        m = raw.get("mesh")
+        if not isinstance(m, dict) or not re.fullmatch(r"[a-f0-9]{14}", str(m.get("id", ""))):
+            raise ValueError("A mesh part needs an imported model (use import_blueprint or a shape from the library).")
+        natural = _vec(m.get("bbox"), 1e-5, 100000, [0.1, 0.1, 0.1])
+        mesh_ref = {"id": m["id"], "bbox": natural, "volume": max(_num(m.get("volume"), 0, 1e12, 0), 0)}
     part = {
         "id": str(raw.get("id") or existing_id or uuid.uuid4().hex[:8])[:16],
         "name": str(raw.get("name") or shape.title()).strip()[:60] or shape.title(),
         "shape": shape,
-        "size": _vec(raw.get("size"), 0.001, 100, [0.1, 0.1, 0.1]),
-        "position": _vec(raw.get("position"), -500, 500, [0, 0, 0]),
+        "size": _vec(raw.get("size"), 0.0001, 5000, natural),
+        "position": _vec(raw.get("position"), -5000, 5000, [0, 0, 0]),
         "rotation": _vec(raw.get("rotation"), -360, 360, [0, 0, 0]),
         "material": material,
         "group": str(raw.get("group") or "").strip()[:40],
@@ -85,7 +101,57 @@ def clean_part(raw: dict, existing_id: str | None = None) -> dict:
     }
     if raw.get("color") and _COLOR.match(str(raw["color"])):
         part["color"] = str(raw["color"])
+    if profile is not None:
+        part["profile"] = profile
+    if mesh_ref is not None:
+        part["mesh"] = mesh_ref
     return part
+
+
+def _profile(raw, shape: str) -> list[list[float]]:
+    """A 2D outline: [x, y] points (for a lathe, x is the distance from the spin axis)."""
+    if not isinstance(raw, (list, tuple)) or len(raw) < (3 if shape == "extrude" else 2):
+        raise ValueError(f"A {shape} part needs a 'profile': a list of [x, y] points in metres "
+                         f"(at least {3 if shape == 'extrude' else 2}).")
+    pts = []
+    for pt in list(raw)[:MAX_PROFILE_POINTS]:
+        if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+            raise ValueError("Each profile point must be [x, y].")
+        x, y = _num(pt[0], -1000, 1000, 0), _num(pt[1], -1000, 1000, 0)
+        pts.append([round(max(x, 0) if shape == "lathe" else x, 6), round(y, 6)])
+    w, h = _bbox2(pts, shape)
+    if w <= 0 or h <= 0:
+        raise ValueError("That profile is flat. Its points need some width and some height.")
+    return pts
+
+
+def _bbox2(pts: list[list[float]], shape: str) -> tuple[float, float]:
+    """Width (for a lathe: the largest radius) and height of an outline."""
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return (max(xs) if shape == "lathe" else max(xs) - min(xs)), max(ys) - min(ys)
+
+
+def _area_centroid(pts: list[list[float]]) -> tuple[float, float]:
+    """Area and centroid x of a closed polygon (shoelace)."""
+    a = cx = 0.0
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]):
+        cross = x1 * y2 - x2 * y1
+        a += cross
+        cx += (x1 + x2) * cross
+    a /= 2
+    return abs(a), (cx / (6 * a) if a else 0.0)
+
+
+def _profile_scale(part: dict) -> tuple[float, float, float]:
+    """How much the outline is stretched to fit the part's size."""
+    pts = part["profile"]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    h = (max(ys) - min(ys)) or 1e-9
+    if part["shape"] == "lathe":
+        r = max(xs) or 1e-9
+        return part["size"][0] / (2 * r), part["size"][1] / h, part["size"][2] / (2 * r)
+    w = (max(xs) - min(xs)) or 1e-9
+    return part["size"][0] / w, part["size"][1] / h, 1.0
 
 
 def volume(part: dict) -> float:
@@ -102,6 +168,20 @@ def volume(part: dict) -> float:
         v = math.pi * x * x * y / 3
     elif shape == "torus":
         v = 2 * math.pi ** 2 * x * y * y
+    elif shape == "tube":   # outer radius, height, inner radius
+        v = math.pi * max(x * x - min(z, x * 0.999) ** 2, 0) * y
+    elif shape == "extrude":
+        sx, sy, _ = _profile_scale(part)
+        v = _area_centroid(part["profile"])[0] * sx * sy * z
+    elif shape == "lathe":   # Pappus: the outline's area swept round the axis
+        pts = part["profile"]
+        closed = pts + [[0.0, pts[-1][1]], [0.0, pts[0][1]]]
+        area, cx = _area_centroid(closed)
+        sx, sy, sz = _profile_scale(part)
+        v = 2 * math.pi * abs(cx) * area * sx * sy * sz
+    elif shape == "mesh":
+        bx, by, bz = part["mesh"]["bbox"]
+        v = part["mesh"]["volume"] * (x / bx) * (y / by) * (z / bz)
     else:  # capsule: cylinder of length y plus two half spheres
         v = math.pi * x * x * y + 4 / 3 * math.pi * x ** 3
     return v * part.get("infill", 1)
@@ -119,6 +199,10 @@ def footprint(part: dict) -> float:
         return x * z
     if shape in ("cylinder", "cone", "sphere", "capsule"):
         return math.pi * x * x
+    if shape == "tube":
+        return math.pi * max(x * x - min(z, x * 0.999) ** 2, 0)
+    if shape in ("extrude", "lathe", "mesh"):   # average cross-section
+        return max(volume(part) / max(part.get("infill", 1), 1e-9) / max(y, 1e-9), 1e-9)
     return math.pi * ((x + y) ** 2 - max(x - y, 0) ** 2)  # torus lying flat
 
 
@@ -128,8 +212,10 @@ def frontal_area(part: dict) -> float:
     shape = part["shape"]
     if shape == "box":
         return y * z
-    if shape == "cylinder":
+    if shape in ("cylinder", "tube"):
         return 2 * x * y
+    if shape in ("extrude", "lathe", "mesh"):
+        return max(volume(part) / max(part.get("infill", 1), 1e-9) / max(x, 1e-9), 1e-9)
     if shape == "sphere":
         return math.pi * x * x
     if shape == "cone":
@@ -145,8 +231,10 @@ def half_extent(part: dict) -> list[float]:
     shape = part["shape"]
     if shape == "box":
         return [x / 2, y / 2, z / 2]
-    if shape in ("cylinder", "cone"):
+    if shape in ("cylinder", "cone", "tube"):
         return [x, y / 2, x]
+    if shape in ("extrude", "lathe", "mesh"):
+        return [x / 2, y / 2, z / 2]
     if shape == "sphere":
         return [x, x, x]
     if shape == "torus":
@@ -233,21 +321,70 @@ class BlueprintStore:
             raise KeyError(bid)
         return self.root / f"{bid}.json"
 
-    def _write(self, bp: dict) -> None:
-        tmp = self._path(bp["id"]).with_suffix(".tmp")
+    def _write(self, bp: dict, remember: bool = True) -> None:
+        path = self._path(bp["id"])
+        if remember and path.exists():   # keep the old version so it can be undone
+            hist = self.root / "history" / bp["id"]
+            hist.mkdir(parents=True, exist_ok=True)
+            old = json.loads(path.read_text(encoding="utf-8"))
+            (hist / f"{old.get('version', 1):06d}.json").write_text(json.dumps(old), encoding="utf-8")
+            for stale in sorted(hist.glob("*.json"))[:-HISTORY_KEPT]:
+                stale.unlink()
+        tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(bp, indent=1), encoding="utf-8")
-        os.replace(tmp, self._path(bp["id"]))
+        os.replace(tmp, path)
+
+    def undo(self, bid: str) -> dict:
+        """Go back to the version before the last change (Corvis's or the owner's)."""
+        with self._lock:
+            current = self.get(bid)
+            hist = sorted((self.root / "history" / bid).glob("*.json")) if (self.root / "history" / bid).is_dir() else []
+            if not hist:
+                raise ValueError("Nothing to undo.")
+            old = json.loads(hist[-1].read_text(encoding="utf-8"))
+            hist[-1].unlink()
+            old["version"] = current.get("version", 1) + 1
+            old["updated"] = time.time()
+            self._write(old, remember=False)
+            return old
+
+    def can_undo(self, bid: str) -> int:
+        hist = self.root / "history" / bid
+        return len(list(hist.glob("*.json"))) if hist.is_dir() else 0
+
+    # --- live control: Corvis steering the hologram the owner is looking at ----------------
+    def command(self, bid: str | None, action: str, parts: list[str] | None = None, amount: float | None = None,
+                say: str = "") -> dict:
+        path = self.root / "live.state"
+        with self._lock:
+            try:
+                seq = json.loads(path.read_text(encoding="utf-8")).get("seq", 0)
+            except (OSError, ValueError):
+                seq = 0
+            cmd = {"seq": seq + 1, "blueprint": bid, "action": action, "parts": parts or [], "amount": amount,
+                   "say": str(say)[:300], "ts": time.time()}
+            path.write_text(json.dumps(cmd), encoding="utf-8")
+        return cmd
+
+    def live(self) -> dict:
+        try:
+            cmd = json.loads((self.root / "live.state").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            cmd = {"seq": 0}
+        return {"command": cmd, "versions": {b["id"]: b["version"] for b in self.list()}}
 
     def list(self) -> list[dict]:
         out = []
         for p in self.root.glob("*.json"):
+            if not re.fullmatch(r"[a-f0-9]{12}\.json", p.name):
+                continue
             try:
                 bp = json.loads(p.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
             out.append({"id": bp["id"], "name": bp["name"], "description": bp.get("description", ""),
                         "parts": len(bp.get("parts", [])), "updated": bp.get("updated", 0),
-                        "version": bp.get("version", 1)})
+                        "version": bp.get("version", 1), "source": bp.get("source")})
         return sorted(out, key=lambda b: b["updated"], reverse=True)
 
     def get(self, bid: str) -> dict:
@@ -273,7 +410,7 @@ class BlueprintStore:
         return self.get(match[0]["id"])
 
     def create(self, name: str = "", template: str = "blank", description: str = "",
-               parts: list | None = None) -> dict:
+               parts: list | None = None, source: dict | None = None) -> dict:
         if template not in TEMPLATES:
             raise ValueError(f"Unknown template '{template}'. Use one of: {', '.join(TEMPLATES)}.")
         base = copy.deepcopy(TEMPLATES[template])
@@ -284,6 +421,8 @@ class BlueprintStore:
         bp = {"id": uuid.uuid4().hex[:12], "name": (name or base["name"]).strip()[:80] or "Blueprint",
               "description": (description or base["description"]).strip()[:1000],
               "created": now, "updated": now, "version": 1, "parts": [clean_part(p) for p in raw_parts]}
+        if source:
+            bp["source"] = clean_source(source)
         with self._lock:
             self._write(bp)
         return bp
@@ -346,9 +485,29 @@ class BlueprintStore:
             path.unlink()
 
 
+SOURCE_KINDS = {
+    "official": "official model published by the maker",
+    "community": "community-made model (not official drawings)",
+    "upload": "a file the owner uploaded",
+    "corvis": "designed by Corvis and the owner",
+}
+
+
+def clean_source(raw: dict) -> dict:
+    """Where a design came from, so the hologram can always say it honestly."""
+    out = {k: str(raw.get(k) or "").strip()[:300] for k in ("title", "url", "site", "author", "license", "note")}
+    kind = str(raw.get("kind") or "community")
+    out["kind"] = kind if kind in SOURCE_KINDS else "community"
+    return {k: v for k, v in out.items() if v}
+
+
 def describe(bp: dict) -> str:
     """A compact text view of a blueprint for Corvis."""
     lines = [f"Blueprint '{bp['name']}' (id {bp['id']}, {len(bp['parts'])} parts). {bp.get('description', '')}".strip()]
+    src = bp.get("source")
+    if src:
+        lines.append(f"Source: {src.get('title') or src.get('url', '')} from {src.get('site', '?')} "
+                     f"({SOURCE_KINDS[src['kind']]}{', ' + src['license'] if src.get('license') else ''}).")
     total = 0.0
     for p in bp["parts"]:
         m = mass(p)
@@ -358,7 +517,8 @@ def describe(bp: dict) -> str:
             extra.append(f"{p['power_w']:g} W")
         if p["battery_wh"]:
             extra.append(f"{p['battery_wh']:g} Wh")
-        lines.append(f"- {p['name']} [{p['id']}]: {p['shape']} size {p['size']} at {p['position']} rot {p['rotation']}, "
+        shape = "imported mesh" if p["shape"] == "mesh" else p["shape"]
+        lines.append(f"- {p['name']} [{p['id']}]: {shape} size {p['size']} at {p['position']} rot {p['rotation']}, "
                      f"{MATERIALS[p['material']]['label']}, {m * 1000:.0f} g"
                      + (f", {', '.join(extra)}" if extra else "") + (f", group {p['group']}" if p["group"] else ""))
     lines.append(f"Total mass: {total:.3f} kg")

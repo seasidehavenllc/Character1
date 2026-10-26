@@ -17,14 +17,41 @@
     <input class="bp-name" id="bp-name" aria-label="Blueprint name" spellcheck="false" placeholder="No blueprint open" disabled>
     <span class="save-state" id="save-state"></span>
     <span class="spacer"></span>
+    <button class="ghost" id="undo" type="button" disabled title="Nothing to undo">Undo</button>
+    <div class="export-wrap">
+      <button class="ghost" id="export-btn" type="button" aria-haspopup="menu">Export ▾</button>
+      <div class="export-menu" id="export-menu" role="menu" hidden>
+        <p>3D printing</p>
+        <button type="button" data-format="stl"><b>STL</b><small>any slicer · mm</small></button>
+        <button type="button" data-format="3mf"><b>3MF</b><small>slicers · one object per part</small></button>
+        <p>3D apps &amp; games</p>
+        <button type="button" data-format="glb"><b>GLB / glTF</b><small>Blender, Unity, Unreal, AR</small></button>
+        <button type="button" data-format="obj"><b>OBJ</b><small>almost any 3D app</small></button>
+        <p>Blueprints</p>
+        <button type="button" data-format="svg"><b>Blueprint sheet</b><small>SVG · front, top, side + dimensions</small></button>
+        <button type="button" data-format="dxf"><b>DXF</b><small>CAD drawing · true size mm</small></button>
+      </div>
+    </div>
     <button class="ghost" id="panel-toggle" type="button">Tools</button>
   </header>
 
   <aside class="library" id="library" aria-label="Blueprint library">
     <div class="lib-head">
       <h2>Blueprints</h2>
-      <button class="primary" id="new-toggle" type="button">+ New</button>
+      <span class="lib-actions">
+        <button class="ghost small" id="import-btn" type="button" title="Import a 3D model: STL, OBJ, GLB/glTF, 3MF, PLY or a zip">Import</button>
+        <button class="primary" id="new-toggle" type="button">+ New</button>
+      </span>
+      <input type="file" id="import-file" accept=".stl,.obj,.glb,.gltf,.ply,.3mf,.zip" hidden>
     </div>
+    <form class="find-form" id="find-form">
+      <input id="find-input" placeholder="Find a blueprint online…" aria-label="Find a blueprint online" autocomplete="off">
+      <button class="ghost small" type="submit">Find</button>
+    </form>
+    <label class="units-row">Units of imported files
+      <select id="import-units"><option value="auto">guess</option><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option><option value="in">inches</option></select>
+    </label>
+    <div class="find-results" id="find-results" hidden></div>
     <div class="new-box" id="new-box" hidden>
       <input id="new-name" placeholder="Name (optional)" maxlength="80">
       <div class="templates" id="templates"></div>
@@ -39,6 +66,8 @@
     <div class="corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="status-strip" id="status-strip"><span class="dot"></span><b>HOLO-PROJECTOR</b><span id="status-text">STANDBY</span></div>
     <div class="tooltip" id="tooltip" hidden></div>
+    <div class="busy" id="busy" hidden><div class="spinner"></div><span id="busy-text"></span></div>
+    <div class="drop-hint">Drop a 3D model to pull it into the hologram</div>
     <div class="empty-state" id="empty-state">
       <h3>Projector standing by</h3>
       <p>Open a blueprint from the library, or press <b>+ New</b>.</p>
@@ -68,6 +97,7 @@
       <button type="button" role="tab" data-tab="part" class="on">Part</button>
       <button type="button" role="tab" data-tab="parts">Parts</button>
       <button type="button" role="tab" data-tab="test">Test</button>
+      <button type="button" role="tab" data-tab="shapes">Shapes</button>
     </nav>
     <section class="tab" data-tab="part">
       <p class="hint" id="part-empty">Click a part of the hologram to select it.</p>
@@ -97,6 +127,7 @@
         <label>Notes <textarea name="notes" rows="2" maxlength="500"></textarea></label>
         <p class="part-facts" id="part-facts"></p>
         <div class="actions">
+          <button type="button" id="save-shape" title="Keep this shape to reuse in any blueprint">Save to library</button>
           <button type="button" id="dup-part">Duplicate</button>
           <button type="button" id="del-part" class="danger">Delete part</button>
         </div>
@@ -105,6 +136,11 @@
     <section class="tab" data-tab="parts" hidden>
       <div class="add-row" id="add-row"></div>
       <ul class="part-list" id="part-list"></ul>
+    </section>
+    <section class="tab" data-tab="shapes" hidden>
+      <p class="hint">Shapes Corvis learned from models you imported or he found online, and parts you saved. Add one, or say “replace the wheels with the rim”.</p>
+      <input id="shape-search" placeholder="Search shapes" aria-label="Search shapes" autocomplete="off">
+      <ul class="shape-list" id="shape-list"></ul>
     </section>
     <section class="tab" data-tab="test" hidden>
       <div class="situations" id="situations"></div>
@@ -119,7 +155,7 @@
     <div class="talk-log" id="talk-log" hidden></div>
     <div class="talk-box">
       <button type="button" class="mic" id="mic" title="Talk to Corvis" aria-label="Talk to Corvis">🎙</button>
-      <input id="talk-input" placeholder="Tell Corvis what to change, design or test…" autocomplete="off" aria-label="Message Corvis">
+      <input id="talk-input" placeholder="“Corvis, split it” · “pull up the Eiffel Tower” · “move the battery up 5 cm”" autocomplete="off" aria-label="Message Corvis">
       <button type="submit" class="primary" id="talk-send">Send</button>
     </div>
   </form>

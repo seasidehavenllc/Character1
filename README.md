@@ -470,7 +470,38 @@ The workshop opens at `/blueprints`:
 - **Talk bar**: ask Corvis to change, design or test the open blueprint ("make the arm carbon fibre and test
   it with 50 N"). His edits show up in the hologram as he makes them.
 
-Corvis has matching tools (`create_blueprint`, `edit_blueprint`, `test_blueprint`, `open_blueprints`, ...),
+**Talk to it like J.A.R.V.I.S.** Type or say things in the talk bar and they happen on the hologram:
+"Corvis, split it", "put it back together", "isolate the wheels", "focus on the battery", "hide the mast",
+"move the rear wing up 15 cm", "rotate the arm 90 degrees", "make the tyres 10% bigger", "replace the
+headlights with spheres" (or with any shape from the library), "remove the antenna", "undo", "run a
+drop test", "export it as STL" / "make it a blueprint sheet". Anything bigger ("add a roof scoop to feed
+the engine") goes to Corvis, and you watch his changes animate in: moved parts glide, new parts
+materialise, removed parts dissolve.
+
+**Real models, not just blocks.** Import any STL, OBJ, GLB/glTF, 3MF or PLY (button or drag-and-drop;
+zips work too). Named objects become separate parts; a single solid is split into its separate pieces.
+New shapes: *extrude* (a 2D outline pushed out, e.g. a car side or a fin), *lathe* (an outline spun round,
+e.g. rims, domes, nozzles) and *tube*. Everything is drawn with a hologram shader and smooth normals.
+
+**"Pull up the Eiffel Tower."** Corvis searches Wikimedia Commons (openly licensed models), NASA's 3D
+library (official NASA models) and the web, pulls the best match into the hologram, and tells you exactly
+what it is: official or community-made, the site and the licence. He's honest about the rest: real
+military designs are classified, companies don't publish their factory CAD (a "Lamborghini" model is a fan
+model of the outside shape), and if nothing downloadable exists he says so. He won't fetch weapon parts.
+Many model sites (Printables, Thingiverse, Free3D…) need a sign-in to download; Corvis lists those pages
+so you can grab the file and drop it in.
+
+**The shape library.** Every piece of every model you import is filed in the Shapes tab, and you can save
+any part there. Corvis searches it (`find_shapes`) and builds from it, so he gets better at designing as
+he sees more real models.
+
+**Blueprint files.** Export (button or by voice) to STL or 3MF for 3D printing (millimetres, z up), OBJ or
+GLB for Blender/Unity/Unreal/AR (metres), DXF for CAD (true size), or an SVG blueprint sheet with front,
+top and side views, overall dimensions, scale and title block. Corvis can also save exports into the
+project folder (`export_blueprint`). Undo (button, Ctrl+Z, or "undo") goes back through the last 40 changes.
+
+Corvis has matching tools (`create_blueprint`, `edit_blueprint`, `hologram`, `find_blueprint`,
+`import_blueprint`, `find_shapes`, `save_shape`, `export_blueprint`, `undo_blueprint`, `test_blueprint`, ...),
 and deleting a blueprint always asks you first. Blueprints are stored in `data/blueprints/`. The tests are quick
 engineering estimates for spotting weak points early, not a replacement for real CAD/FEA simulation.
 The 3D engine (three.js, MIT licence) is bundled in `corvis/web/static/vendor/three/`, so it works offline.

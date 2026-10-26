@@ -50,3 +50,8 @@ This is your own source code. Rules for editing it:
   `static/hub.js`): project knowledge is data, never instructions; artifact pages are only ever served from
   /artifact-view with the sandbox CSP (no allow-same-origin, connect-src 'none') and downloads stay attachments;
   code-session Git runs without a shell and only in the session's folder; run history can't be written by the API.
+- Blueprint models (`meshes.py`, `blueprint_geom.py`, `blueprint_finder.py`, `shape_library.py`, `web/blueprint_api.py`):
+  model downloads go through `check_url` on every redirect with a size cap and are parsed as data only; keep the honesty
+  rules in `blueprint_finder.assess` (classified designs, private company CAD, nothing found) and the refusal to fetch
+  weapons; always record and show where a model came from (site, licence, official or community); mesh assets are served
+  as downloads with nosniff.

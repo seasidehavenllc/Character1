@@ -120,7 +120,7 @@ def test_corvis_can_design_edit_and_test_blueprints(tmp_path):
     run = agent.registry.run
     assert "Created blueprint 'Scout'" in run("create_blueprint", {"name": "Scout", "template": "rover"})
     assert "Opening the Scout blueprint" in run("open_blueprints", {"blueprint": "scout"})
-    assert "added 1" in run("edit_blueprint", {"blueprint": "Scout", "add_parts": [
+    assert "added Mast" in run("edit_blueprint", {"blueprint": "Scout", "add_parts": [
         {"name": "Mast", "shape": "cylinder", "size": [0.01, 0.4, 0], "position": [0, 0.5, 0]}]})
     assert "Mast" in run("show_blueprint", {"blueprint": "Scout"})
     report = run("test_blueprint", {"blueprint": "Scout", "situation": "drop", "settings": {"height_m": 3}})

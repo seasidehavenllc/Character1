@@ -1138,7 +1138,7 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
             bp = blueprints.get(request.path_params["bid"])
         except KeyError:
             return error("Blueprint not found.", 404)
-        return body({"blueprint": bp, "summary": blueprint_sim.summary(bp)})
+        return body({"blueprint": bp, "summary": blueprint_sim.summary(bp), "can_undo": blueprints.can_undo(bp["id"])})
 
     async def save_blueprint(request: Request):
         data = await request.json()
@@ -1149,7 +1149,7 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
             return error("Blueprint not found.", 404)
         except ValueError as e:
             return error(str(e), 409 if "changed since" in str(e) else 400)
-        return body({"blueprint": bp, "summary": blueprint_sim.summary(bp)})
+        return body({"blueprint": bp, "summary": blueprint_sim.summary(bp), "can_undo": blueprints.can_undo(bp["id"])})
 
     async def delete_blueprint(request: Request):
         try:
@@ -1169,7 +1169,8 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
             return error(str(e))
 
     from .hub_api import hub_routes
-    routes = hub_routes(store=store, manager=manager, data_dir=data_dir, pick_workspace=pick_workspace,
+    from .blueprint_api import blueprint_routes
+    routes = blueprint_routes(cfg, data_dir, blueprints) + hub_routes(store=store, manager=manager, data_dir=data_dir, pick_workspace=pick_workspace,
                         public=public, routines=routines, fire_routine=fire_routine, bots=bots,
                         owner_tz=owner_tz, lead_id=LEAD_ID) + [
         Route("/", index),
