@@ -19,6 +19,7 @@ confidence is above the configured threshold.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import math
 import os
@@ -81,7 +82,10 @@ def slugify(title: str) -> str:
     """'Servo motors' -> 'ServoMotors' (the user's naming style)."""
     words = re.findall(r"[A-Za-z0-9]+", title)
     slug = "".join(w if w.isupper() and len(w) > 1 else w[:1].upper() + w[1:] for w in words)
-    return slug[:80] or "Untitled"
+    if slug:
+        return slug[:80]
+    digest = hashlib.sha1(str(title).encode("utf-8")).hexdigest()[:8]   # e.g. a title in another script
+    return f"Topic{digest}"
 
 
 def category_name(name: str) -> str:

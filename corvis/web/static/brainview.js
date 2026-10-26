@@ -297,9 +297,14 @@
     }
 
     // ---------- drawing ----------
+    let lastDraw = 0, onScreen = true;
+    if ("IntersectionObserver" in window) {   // no drawing at all while the brain is scrolled out of view
+      new IntersectionObserver((es) => { onScreen = es.some((e) => e.isIntersecting); }).observe(cv);
+    }
     function frame(now) {
       if (!document.body.contains(cv)) { stopLive(); return; }
-      if (!document.hidden) draw(now);
+      const lively = drag || playing || (focus && now - focus.start < 800);
+      if (!document.hidden && onScreen && (lively || now - lastDraw > 32)) { lastDraw = now; draw(now); }   // ~30 fps at rest
       if (playing) step(now);
       requestAnimationFrame(frame);
     }

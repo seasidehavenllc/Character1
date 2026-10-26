@@ -72,12 +72,16 @@ class BrainRepo:
     def has_token(self) -> bool:
         return self.token_path.is_file() and bool(self.token_path.read_text(encoding="utf-8").strip())
 
-    def _auth(self) -> list[str]:
+    def _auth(self) -> dict:
+        """The token as git config passed through the environment, so it never shows up in the
+        process list (git 2.31+). Prompts are off so a missing token fails fast instead of hanging."""
+        env = {"GIT_TERMINAL_PROMPT": "0"}
         if not self.has_token() or not self.remote.startswith("https://"):
-            return []
+            return env
         token = self.token_path.read_text(encoding="utf-8").strip()
         basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-        return ["-c", f"http.extraHeader=Authorization: Basic {basic}"]
+        return {**env, "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "http.extraHeader",
+                "GIT_CONFIG_VALUE_0": f"Authorization: Basic {basic}"}
 
     # --- the repository --------------------------------------------------------------------
     def init(self) -> None:
@@ -135,10 +139,14 @@ class BrainRepo:
         if not self.remote:
             return "No GitHub repository set."
         with self._lock:
-            code, out = git(self.root, *self._auth(), *AUTHOR, "pull", "--rebase", "--autostash", "-q", "origin", "main",
-                            timeout=90)
+            code, out = git(self.root, *AUTHOR, "pull", "--rebase", "--autostash", "-q", "origin", "main",
+                            timeout=90, env=self._auth())
+            if code != 0 and any((self.root / ".git" / d).exists() for d in ("rebase-merge", "rebase-apply")):
+                git(self.root, "rebase", "--abort")   # never leave the brain stuck mid-rebase: later commits would fail
         if code != 0 and "couldn't find remote ref" not in out.lower():
-            self.status["error"] = f"Pull failed: {out[-300:]}"
+            hint = (" The GitHub repository has changes that clash with Corvis's (often a README made on GitHub): "
+                    "use an empty repository, or resolve it by hand." if "conflict" in out.lower() else "")
+            self.status["error"] = f"Pull failed:{hint} {out[-300:]}"
             return self.status["error"]
         self.status["last_pull"], self.status["error"] = time.time(), None
         return "Pulled the latest from GitHub."
@@ -148,7 +156,7 @@ class BrainRepo:
             return "No GitHub repository set."
         self.pull()
         with self._lock:
-            code, out = git(self.root, *self._auth(), "push", "-q", "-u", "origin", "main", timeout=120)
+            code, out = git(self.root, "push", "-q", "-u", "origin", "main", timeout=120, env=self._auth())
         if code != 0:
             hint = " (add a GitHub token in Knowledge → Sync)" if "auth" in out.lower() or "403" in out or "401" in out else ""
             self.status["error"] = f"Push failed{hint}: {out[-300:]}"

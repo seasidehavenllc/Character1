@@ -136,6 +136,11 @@ class Learner:
                 r["status"] = "stopped" if self.should_stop() else "budget reached"
                 break
             sub = queue.pop(0)
+            fresh = self.kb.find(sub["title"]) if mode != "verify" else None
+            if fresh and fresh.get("last_verified") == dt.date.today().isoformat():   # e.g. a resumed session
+                self.emit(f"Already up to date today: {fresh['title']}")
+                done.append(fresh["id"])
+                continue
             try:
                 doc_id, related_names = self.learn_subtopic(sub, sub.get("category") or category, planned_ids)
             except Exception as e:   # one bad subtopic must not end the session

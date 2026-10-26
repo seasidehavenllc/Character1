@@ -326,9 +326,9 @@ class RunManager:
         mode, raw = m.group(2).lower(), m.group(3).strip()
         topic = raw.strip(" \"'“”")
         quoted = raw[:1] in "\"'“" and raw[-1:] in "\"'”"
-        # Without "Corvis" or quotes, only a short topic counts ("research servo motors"), so ordinary
-        # requests like "research which servo fits my arm and tell me?" still go to the model.
-        if not topic or len(topic) > 120 or not (m.group(1) or quoted or (len(topic.split()) <= 4 and "?" not in topic)):
+        # Only 'Corvis learn X' or a quoted topic starts a session straight away. Plain requests like
+        # "research the best servo for my arm" go to the model, which can still start one with learn_topic.
+        if not topic or len(topic) > 120 or not (m.group(1) or quoted) or "?" in topic:
             return None
         job = brain.learn(topic, mode, by="owner")
         if mode == "research":

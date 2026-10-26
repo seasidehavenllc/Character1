@@ -134,6 +134,7 @@
           <div class="k-job-top"><span class="pill ${STATUS_PILL[j.status] || ""}">${esc(j.status)}</span>
             <b></b><small class="muted">${j.mode} · ${j.by === "schedule" ? "scheduled" : esc(j.by)} · ${ago(j.started || j.created)}</small>
             ${["running", "queued"].includes(j.status) ? `<button class="btn ghost small" type="button" data-stop>Stop</button>` : ""}
+            ${["interrupted", "stopped", "failed"].includes(j.status) && j.mode !== "verify" ? `<button class="btn ghost small" type="button" data-resume title="Start it again; topics already learned or checked today are skipped">Resume</button>` : ""}
             <button class="link-btn" type="button" data-log>${open.has(j.id) ? "Hide log" : "Log"}</button></div>
           <p class="hint">${j.summary ? `${s.new_files} new · ${s.updated_files} updated · ${s.pending} for review · ${s.verified} verified · ${s.sources_reviewed} sources · ${s.minutes} min`
             : esc((j.log[j.log.length - 1] || {}).text || "Waiting to start…")}
@@ -144,6 +145,11 @@
         $("[data-log]", li).addEventListener("click", () => { open.has(j.id) ? open.delete(j.id) : open.add(j.id); draw(); });
         const stop = $("[data-stop]", li);
         if (stop) stop.addEventListener("click", async () => { await api(`/api/brain/jobs/${j.id}/stop`, { method: "POST" }); load(); });
+        const resume = $("[data-resume]", li);
+        if (resume) resume.addEventListener("click", async () => {
+          try { const nj = await api("/api/brain/jobs", { method: "POST", body: { topic: j.topic, mode: j.mode } }); open.add(nj.id); load(); }
+          catch (err) { toast(err.message); }
+        });
         const rep = $("[data-report]", li);
         if (rep) rep.addEventListener("click", (e) => { e.preventDefault(); showRaw(j.report, "Learning report"); });
         list.appendChild(li);
@@ -363,7 +369,7 @@
     const v = h(`<div class="k-sync">
       <form class="hub-card k-sync-form">
         <h3>GitHub backup</h3>
-        <p class="hint">Every change is a Git commit in <code></code>. To back it up, create a <b>private</b> repository on GitHub (e.g. corvis-brain) and a fine-grained token with <i>Contents: read and write</i> on that repository only. The token is kept in Corvis's data folder, never in config.yaml or Git, and is never shown again.</p>
+        <p class="hint">Every change is a Git commit in <code></code>. To back it up, create an empty <b>private</b> repository on GitHub (e.g. corvis-brain, without a README) and a fine-grained token with <i>Contents: read and write</i> on that repository only. The token is kept in Corvis's data folder, never in config.yaml or Git, and is never shown again.</p>
         <label>Repository address<input name="remote" placeholder="https://github.com/you/corvis-brain.git" autocomplete="off"></label>
         <label>Access token<input name="token" type="password" autocomplete="new-password"></label>
         <label class="check"><input type="checkbox" name="auto_push"> Push automatically after changes</label>

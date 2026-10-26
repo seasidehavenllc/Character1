@@ -57,6 +57,9 @@ class BrainService:
             self.continuity = Continuity(self.root, conversations, self.llm_factory, self.repo.commit,
                                          name=agent_name(cfg), personality=str(cfg.get("personality") or ""),
                                          jobs=self.jobs, kb=self.kb)
+        self.busy: Callable[[], bool] = lambda: False   # the app sets this: is the owner's chat using the model?
+        if self.continuity:
+            self.continuity.busy = lambda: self.busy()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.started = False
@@ -106,7 +109,8 @@ class BrainService:
         return internet.fetch(url, self.cfg, 0, SOURCE_CHARS)   # check_url refuses private addresses
 
     def make_learner(self, emit=print, should_stop=lambda: False) -> Learner:
-        return Learner(self.kb, self.llm_factory(), self._search, self._fetch, emit=emit, should_stop=should_stop,
+        llm = Courteous(self.llm_factory(), lambda: self.busy(), should_stop, emit)
+        return Learner(self.kb, llm, self._search, self._fetch, emit=emit, should_stop=should_stop,
                        auto_threshold=self.auto_threshold, delay=float(self.bc["request_delay"]))
 
     def _changed(self, message: str) -> None:
@@ -139,6 +143,8 @@ class BrainService:
                 self.continuity.recover()
             self.kb.write_dashboard()
             self.repo.commit("Corvis started: dashboard refreshed")
+            if self.repo.remote and self.repo.auto_push:
+                self.repo.push()   # anything committed after the last push before shutdown
         except Exception as e:   # the brain must never stop the app from starting
             self.log(f"Brain start-up: {type(e).__name__}: {e}")
 
@@ -148,7 +154,10 @@ class BrainService:
             self.continuity.stop()
         if self.repo.remote and self.repo.auto_push and self.repo.status.get("last_commit") and (
                 (self.repo.status.get("last_push") or 0) < self.repo.status["last_commit"]):
-            self.repo.push()
+            # one last push, but shutdown never waits long on the network (the next start pushes anyway)
+            worker = threading.Thread(target=self.repo.push, daemon=True, name="corvis-brain-push")
+            worker.start()
+            worker.join(20)
 
     def _maintain_loop(self) -> None:
         while not self._stop.wait(600):
@@ -181,6 +190,27 @@ class BrainService:
         (self.root / ".corvis").mkdir(exist_ok=True)
         (self.root / ".corvis/maintenance.json").write_text(json.dumps(out), encoding="utf-8")
         return out
+
+
+class Courteous:
+    """Background learning shares the model with the owner's chats. Before each of its model calls it
+    waits while a chat reply is running, so a long research session never slows the conversation down."""
+    MAX_WAIT = 600
+
+    def __init__(self, llm, busy: Callable[[], bool], should_stop: Callable[[], bool], emit=lambda text: None):
+        self.llm, self.busy, self.should_stop, self.emit = llm, busy, should_stop, emit
+
+    def __getattr__(self, name):
+        return getattr(self.llm, name)
+
+    def chat(self, messages, tools=None):
+        waited = 0.0
+        while self.busy() and not self.should_stop() and waited < self.MAX_WAIT:
+            if waited == 0:
+                self.emit("Pausing while you chat with Corvis…")
+            time.sleep(1)
+            waited += 1
+        return self.llm.chat(messages, tools) if tools is not None else self.llm.chat(messages)
 
 
 _shared: dict[str, BrainService] = {}

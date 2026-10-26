@@ -213,9 +213,8 @@ def build_agent(
                 pass  # memory must never block a task
         return text
 
-    if memory is None and node_hub is None and continuity is None:
-        context = None  # type: ignore[assignment]
-    recall = None
+    context_provider = context if (memory is not None or node_hub is not None or continuity is not None) else None
+    recall_provider = None
     if depth == 0 and memory and mcfg["auto_recall"]:
         def recall(task: str) -> tuple[str, list[str]]:
             blocks: list[str] = []
@@ -250,14 +249,15 @@ def build_agent(
                     lines.append(f"- Goal: {episode.get('goal','')} | Outcome: {episode.get('outcome','')} | Verified: {episode.get('verified', False)} | Lesson: {episode.get('lesson','')}")
                 blocks.append("\n".join(lines))
             return ("\n\n".join(blocks), titles)
+        recall_provider = recall
 
     agent = CodingAgent(
         llm, registry, system,
         max_steps=acfg.get("max_steps", 60),
         max_context_chars=acfg.get("max_context_chars", 200_000),
         on_event=lambda kind, text: emit(kind, text),
-        context_provider=context,
-        recall_provider=recall,
+        context_provider=context_provider,
+        recall_provider=recall_provider,
     )
     agent.bot = bot
     holder["agent"] = agent

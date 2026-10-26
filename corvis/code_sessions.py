@@ -8,6 +8,7 @@ Git is run directly (no shell) and only on the session's own folder.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import uuid
@@ -19,10 +20,11 @@ MAX_TOTAL = 600_000
 MAX_NEW_FILE = 200_000    # bytes of an untracked file turned into a diff
 
 
-def git(folder: str | Path, *args: str, timeout: int = 30) -> tuple[int, str]:
+def git(folder: str | Path, *args: str, timeout: int = 30, env: dict | None = None) -> tuple[int, str]:
     try:
         p = subprocess.run(["git", "-c", "core.quotepath=off", "--no-pager", *args], cwd=str(folder),
-                           capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
+                           capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace",
+                           env={**os.environ, **env} if env else None)
     except FileNotFoundError:
         return 127, "Git isn't installed on this computer."
     except subprocess.TimeoutExpired:

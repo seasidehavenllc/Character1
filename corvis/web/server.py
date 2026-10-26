@@ -232,6 +232,7 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
     brain = brain_shared(cfg, data_dir, conversations=store)
     if brain is not None:
         manager.extra_state["brain"] = brain
+        brain.busy = manager.any_active   # background learning and summaries wait while you chat
     studio = CreativeStudio(data_dir, wcfg["default_workspace"], cfg)
     workspace_store = WorkspaceStore(data_dir)
     if computer is not None:

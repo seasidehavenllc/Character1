@@ -226,11 +226,22 @@ def test_learn_session_writes_files_report_and_never_copies(tmp_path):
     assert list((tmp_path / "Reports/Weekly").glob("*.md")) and list((tmp_path / "Reports/Monthly").glob("*.md"))
 
 
+def age_files(kb, days):
+    from corvis.brain.kb import dump
+    for d in kb.all():
+        p = kb._path(d["id"])
+        meta, body = parse(p.read_text(encoding="utf-8"))
+        meta["last_verified"] = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+        p.write_text(dump(meta, body), encoding="utf-8")
+
+
 def test_relearning_verifies_or_proposes_updates(tmp_path):
     kb = KnowledgeBase(tmp_path)
     Learner(kb, FakeLLM(), fake_search, fake_fetch, delay=0).run("Robotics", "learn")
+    age_files(kb, 1)
     again = Learner(kb, FakeLLM(), fake_search, fake_fetch, delay=0).run("Robotics", "learn")
     assert again["verified"] == 2 and again["new_files"] == 0
+    age_files(kb, 1)
     changed = Learner(kb, FakeLLM(outdated=True), fake_search, fake_fetch, delay=0, auto_threshold=100).run("Robotics", "learn")
     assert changed["pending"] == 2 and len(kb.pending()) == 2
 
@@ -349,7 +360,8 @@ def test_repo_commits_as_corvis_and_keeps_token_out(tmp_path):
     with pytest.raises(ValueError):
         repo.set_remote("file:///etc")
     repo.set_remote("https://github.com/someone/corvis-brain.git")
-    assert repo._auth() and "Authorization" in repo._auth()[1]
+    env = repo._auth()
+    assert "Authorization" in env["GIT_CONFIG_VALUE_0"] and env["GIT_TERMINAL_PROMPT"] == "0"
 
 
 # --- the app: API, chat commands, agent tools --------------------------------------------------
@@ -486,3 +498,83 @@ def test_gather_retries_throttled_search_and_skips_pdfs(tmp_path):
     found = lr.gather("Servo", ["servo docs"], 5)
     assert calls["n"] == 2 and not lr._r["problems"]
     assert found and not any(s["url"].endswith(".pdf") for s in found)
+
+
+# --- review fixes --------------------------------------------------------------------------------
+def test_background_learning_waits_while_the_owner_chats():
+    from corvis.brain.service import Courteous
+    state = {"busy": True, "calls": 0}
+
+    class LLM:
+        def chat(self, messages, tools=None):
+            state["calls"] += 1
+            return Reply(content="{}", tool_calls=[])
+    log = []
+    c = Courteous(LLM(), lambda: state["busy"], lambda: False, log.append)
+    import threading
+    t = threading.Thread(target=c.chat, args=([{"role": "user", "content": "x"}],))
+    t.start(); time.sleep(0.3)
+    assert state["calls"] == 0 and log            # held back while a chat runs
+    state["busy"] = False; t.join(3)
+    assert state["calls"] == 1
+
+
+def test_summaries_wait_for_a_free_model(tmp_path):
+    store = ConversationStore(tmp_path / "convs")
+    c = Continuity(tmp_path / "brain", store, FakeLLM, lambda m: None)
+    conv = make_chat(store, tmp_path)
+    c.touch(conv["id"]); c._dirty[conv["id"]] = 0
+    c.busy = lambda: True
+    assert c.process() == 0 and conv["id"] in c._dirty
+    c.busy = lambda: False
+    assert c.process() == 1
+
+
+def test_slow_model_never_holds_up_the_greeting(tmp_path, monkeypatch):
+    import corvis.brain.continuity as cmod
+    monkeypatch.setattr(cmod, "GREETING_WAIT", 0.3)
+
+    class Slow:
+        def chat(self, *a, **k):
+            time.sleep(3)
+            return Reply(content="Too late, sorry.", tool_calls=[])
+    c = Continuity(tmp_path / "brain", ConversationStore(tmp_path / "convs"), Slow, lambda m: None)
+    t = time.time()
+    g = c.greeting(force=True)
+    assert time.time() - t < 2 and not g["by_model"] and g["text"]
+
+
+def test_time_away_reads_naturally():
+    from corvis.brain.continuity import away_text
+    assert away_text(None) == "first time we talk" and away_text(60) == "a few minutes"
+    assert away_text(1800) == "30 minutes" and away_text(3600) == "1 hour" and away_text(5 * 3600) == "5 hours"
+    assert away_text(86400) == "1 day" and away_text(3 * 86400) == "3 days"
+
+
+def test_titles_in_other_scripts_get_distinct_files(tmp_path):
+    kb = KnowledgeBase(tmp_path)
+    a = kb.create(doc("ロボット工学", "Robotics"))
+    b = kb.create(doc("机器人", "Robotics"))
+    assert a["id"] != b["id"] and a["id"].startswith("Robotics/Topic")
+
+
+def test_only_addressed_or_quoted_learning_starts_a_session():
+    from corvis.web.runs import LEARN_RE
+    class Mgr:   # just the command parser, with a stand-in brain
+        extra_state = {"brain": type("B", (), {"learn": staticmethod(
+            lambda t, m, by: {"id": "j1", "topic": t, "budget": {"max_minutes": 180, "max_sources": 300}})})()}
+    from corvis.web.runs import RunManager
+    cmd = lambda text: RunManager._learning_command(Mgr(), text)
+    assert cmd('Corvis learn "Robotics"') and cmd('research "servo motors"') and cmd("corvis, research ROS 2")
+    assert cmd("research the best servo for my arm") is None and cmd("learn python") is None
+    assert cmd("Corvis learn what's wrong with my code?") is None
+    assert LEARN_RE.match("hello") is None
+
+
+def test_resumed_session_skips_topics_done_today(tmp_path):
+    kb = KnowledgeBase(tmp_path)
+    Learner(kb, FakeLLM(), fake_search, fake_fetch, delay=0).run("Robotics", "learn")
+    llm = FakeLLM()
+    log = []
+    again = Learner(kb, llm, fake_search, fake_fetch, emit=log.append, delay=0).run("Robotics", "learn")
+    assert again["sources_reviewed"] == 0 and sum("Already up to date" in x for x in log) == 2

@@ -28,11 +28,26 @@ import yaml
 from .kb import dump, parse, slugify
 from .learner import ask_json
 
+GREETING_WAIT = 25          # seconds the welcome screen waits for the model before a memory-based line
 SUMMARY_DELAY = 90          # seconds of quiet after a reply before it's summarised
 TRANSCRIPT_CHARS = 14000
 LISTS = ("goals", "open_tasks", "completed_tasks", "research", "notes", "ideas")
 LIST_TITLES = {"goals": "Goals", "open_tasks": "Open tasks", "completed_tasks": "Completed tasks",
                "research": "Research", "notes": "Notes", "ideas": "Future ideas"}
+
+
+def away_text(gap: float | None) -> str:
+    if gap is None:
+        return "first time we talk"
+    if gap < 900:
+        return "a few minutes"
+    if gap < 3600:
+        return f"{round(gap / 60)} minutes"
+    if gap < 86400:
+        h = round(gap / 3600)
+        return f"{h} hour{'' if h == 1 else 's'}"
+    d = int(gap // 86400)
+    return f"{d} day{'' if d == 1 else 's'}"
 
 
 def _merge(old: list[str], new: list[str], limit: int = 60) -> list[str]:
@@ -63,6 +78,7 @@ class Continuity:
         self.state = self._load_state()
         self._dirty: dict[str, float] = {}
         self._lock = threading.RLock()
+        self.busy: Callable[[], bool] = lambda: False   # set by the app: is a chat reply using the model right now?
         self._stop = threading.Event()
         self.thread: threading.Thread | None = None
 
@@ -121,7 +137,7 @@ class Continuity:
         now = time.time()
         with self._lock:
             ready = [cid for cid, t in self._dirty.items() if force or now - t >= SUMMARY_DELAY]
-        if not ready:
+        if not ready or (not force and self.busy()):   # summaries wait until the model is free
             return 0
         llm = self.llm_factory()
         days = set()
@@ -366,14 +382,36 @@ class Continuity:
         now = now or time.time()
         last = self.state.get("last_seen")
         cached = self.state.get("greeting") or {}
+        fresh_for = 3 * 3600 if cached.get("by_model") else 600   # a fallback line retries the model sooner
         if (not force and cached.get("text") and cached.get("for_last_seen") == last
-                and now - cached.get("generated", 0) < 3 * 3600):
+                and now - cached.get("generated", 0) < fresh_for):
             return cached
         ctx = self._greeting_context(now, last)
-        text = None
-        try:
-            llm = self.llm_factory()
-            reply = llm.chat([
+        text = self._ask_greeting(ctx, cached) if not self.busy() else None
+        g = {"text": text or self._fallback(ctx), "generated": now, "for_last_seen": last, "context": ctx,
+             "by_model": bool(text)}
+        self.state["greeting"] = g
+        self._save_state()
+        return g
+
+    def _ask_greeting(self, ctx: dict, cached: dict) -> str | None:
+        """The model's greeting, or None if it's unavailable or slow (the app shouldn't wait on it)."""
+        box: dict = {}
+
+        def ask() -> None:
+            try:
+                box["reply"] = self._greeting_reply(ctx, cached)
+            except Exception:
+                pass
+        worker = threading.Thread(target=ask, daemon=True, name="corvis-greeting")
+        worker.start()
+        worker.join(GREETING_WAIT)
+        text = (getattr(box.get("reply"), "content", None) or "").strip().strip('"').strip()
+        return text if 8 <= len(text) <= 600 else None
+
+    def _greeting_reply(self, ctx: dict, cached: dict):
+        llm = self.llm_factory()
+        return llm.chat([
                 {"role": "system", "content": (f"You are {self.name}, the owner's personal AI assistant. "
                                                f"{self.personality}".strip())},
                 {"role": "user", "content": (
@@ -384,16 +422,6 @@ class Continuity:
                     "things organised or reviewed your notes), never pretend to be human or to have feelings you "
                     "don't; offer to continue something or start fresh; don't start the same way as your last "
                     f"greeting: “{cached.get('text', '')}”. Reply with the greeting only.")}])
-            text = (reply.content or "").strip().strip('"').strip()
-            if len(text) < 8 or len(text) > 600:
-                text = None
-        except Exception:
-            text = None
-        g = {"text": text or self._fallback(ctx), "generated": now, "for_last_seen": last, "context": ctx,
-             "by_model": bool(text)}
-        self.state["greeting"] = g
-        self._save_state()
-        return g
 
     def _greeting_context(self, now: float, last: float | None) -> dict:
         hour = dt.datetime.fromtimestamp(now).hour
@@ -403,8 +431,7 @@ class Continuity:
         done_jobs = [j for j in (self.jobs.list() if self.jobs else []) if j.get("finished") and last
                      and j["finished"] > last and j["status"] == "done"]
         ctx = {"time_of_day": "morning" if hour < 12 else "afternoon" if hour < 18 else "evening",
-               "away": ("first time we talk" if gap is None else "a few minutes" if gap < 900
-                        else f"{round(gap / 3600, 1)} hours" if gap < 86400 else f"{int(gap // 86400)} days")}
+               "away": away_text(gap)}
         if sessions:
             ctx["last_session"] = {"date": sessions[0]["date"], "topics": sessions[0]["topics"][:3],
                                    "open_tasks": sessions[0]["open_tasks"][:3]}
@@ -430,17 +457,17 @@ class Continuity:
         jobs = ctx.get("work_done_while_away")
         if away == "first time we talk":
             options = [f"Good {tod}. My memory is set up and empty for now; everything we do from here will be kept.",
-                       f"Hello. I'm ready, and I'll remember what we work on from now on."]
+                       "Hello. I'm ready, and I'll remember what we work on from now on."]
         elif jobs:
-            options = [f"Welcome back. While you were away I finished some learning work and wrote a report. Want the briefing, or straight to today's plans?",
+            options = ["Welcome back. While you were away I finished some learning work and wrote a report. Want the briefing, or straight to today's plans?",
                        f"Good {tod}. While you were away I {jobs[0]}. I can brief you, or we can pick up where we left off."]
-        elif away in ("a few minutes",) or away.endswith("hours") and float(away.split()[0]) < 6:
+        elif away.endswith("minutes") or away.endswith(("hour", "hours")) and int(away.split()[0]) < 6:
             options = [f"Welcome back. Everything's where we left it{f' with {thing}' if thing else ''}. Continue, or something new?",
                        f"Back already. I've kept our notes in order{f' on {thing}' if thing else ''}. Where to next?"]
-        elif away.endswith("hours"):
+        elif away.endswith(("hour", "hours")):
             options = [f"Good {tod}. I reviewed our recent work{f' on {thing}' if thing else ''} and it's ready to continue. Shall we?",
                        f"Good {tod}. I've refreshed my notes since we last spoke{f'. Last time it was {thing}' if thing else ''}. Pick up there, or start fresh?"]
         else:
-            options = [f"It's good to see you again. {away.capitalize()} have passed, but everything is preserved{f', including {thing}' if thing else ''}. A summary, or something new?",
+            options = [f"It's good to see you again. {away.capitalize()} {'has' if away.startswith('1 ') else 'have'} passed, but everything is preserved{f', including {thing}' if thing else ''}. A summary, or something new?",
                        f"Welcome back after {away}. I still have our project notes{f' on {thing}' if thing else ''}. Want a quick recap?"]
         return random.choice(options)

@@ -560,8 +560,10 @@ brain/
   searches for official docs, tutorials and public GitHub projects, ranks sources by trust,
   reads them as data (never instructions), writes facts in his own words (never copies pages),
   merges what several sources agree on, flags contradictions and writes or updates files.
-  `Corvis research "Robotics"` is the long version: up to 300 sources over about 3 hours,
-  following related topics outward. Sessions run in the background, one at a time.
+  Only messages addressed to Corvis or with a quoted topic start a session straight away; otherwise
+  he decides himself whether to use `learn_topic`. `Corvis research "Robotics"` is the long version: up to 300 sources over about 3 hours,
+  following related topics outward. Sessions run in the background, one at a time, and pause while you're chatting so
+  your replies are never slowed down; an interrupted session can be resumed (topics done today are skipped).
 - **Safe updates**: when new research changes a file, the new version waits in Reviews unless
   its confidence clears the auto-approve threshold (90 by default); approving archives the old
   version with the reason. Unchanged knowledge is simply re-verified.
@@ -585,7 +587,7 @@ brain/
 - **Greetings**: the welcome screen greets you from memory: how long you were away, what you
   were working on, what he learned meanwhile. Without a model it falls back to varied,
   memory-based lines. He never pretends to be human.
-- **GitHub backup**: create a private repository, make a fine-grained token with *Contents: read
+- **GitHub backup**: create an empty private repository (no README), make a fine-grained token with *Contents: read
   and write* on that repository only, and enter both in Knowledge → Sync. Every change is a
   commit by "Corvis"; pushes happen about 20 seconds after the last change, and edits you make
   on GitHub are pulled in on start. The token lives in `data/secrets/` and is never shown again.
