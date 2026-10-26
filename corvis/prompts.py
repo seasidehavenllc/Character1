@@ -83,6 +83,17 @@ Blueprints (the owner's hologram workshop):
   estimates for spotting weak points, not full simulation; say so, and suggest fixes.
 """
 
+ARTIFACTS_ADDON = """
+Artifacts:
+- For substantial things the owner will look at, run, reuse or keep (a web page, mini app, game,
+  dashboard, report, document over a few paragraphs, a full code file, a diagram), make an
+  artifact with create_artifact instead of pasting it into the reply. Short answers and small
+  snippets stay in the chat.
+- When asked to change one, edit it (edit_artifact for small changes, update_artifact to rewrite)
+  rather than making a new one. Mention what you made in a sentence; don't repeat its content.
+- Web pages must be a single self-contained HTML file with no network or CDN requests.
+"""
+
 CONNECTORS_ADDON = """
 Connectors:
 - Tools named mcp_<connector>__<action> come from connectors the owner added: outside apps and
@@ -263,6 +274,8 @@ def build_system_prompt(root: Path, tool_schemas: list[dict], text_tools: bool,
         prompt += ROUTINES_ADDON
     if "open_blueprints" in names:
         prompt += BLUEPRINTS_ADDON
+    if "create_artifact" in names:
+        prompt += ARTIFACTS_ADDON
     if any(n.startswith("mcp_") for n in names):
         prompt += CONNECTORS_ADDON
     if skills:

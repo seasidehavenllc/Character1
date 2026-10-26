@@ -21,8 +21,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-EVERY = ("day", "weekday", "week", "hours")
+EVERY = ("day", "weekday", "week", "hours", "once")
 TICK_SECONDS = 20
+MAX_RUNS_KEPT = 50
 
 
 def zone(tz: str | None) -> ZoneInfo:
@@ -36,7 +37,7 @@ def check_schedule(s: dict) -> dict:
     """Validate and normalise a schedule. Raises ValueError with a friendly message."""
     every = str(s.get("every", "day")).lower()
     if every not in EVERY:
-        raise ValueError("Schedule 'every' must be day, weekday, week or hours.")
+        raise ValueError("Schedule 'every' must be once, day, weekday, week or hours.")
     if every == "hours":
         hours = int(s.get("hours") or 0)
         if not 1 <= hours <= 168:
@@ -49,6 +50,12 @@ def check_schedule(s: dict) -> dict:
     except (ValueError, AssertionError):
         raise ValueError("Time must look like 08:30 (24-hour).") from None
     out = {"every": every, "at": f"{h:02d}:{m:02d}"}
+    if every == "once":
+        try:
+            day = dt.date.fromisoformat(str(s.get("date") or "").strip())
+        except ValueError:
+            raise ValueError("A one-time task needs a date like 2026-11-03.") from None
+        out["date"] = day.isoformat()
     if every == "week":
         day = str(s.get("day") or "mon").lower()[:3]
         if day not in DAYS:
@@ -62,6 +69,9 @@ def next_run(s: dict, tz: str | None, after: float) -> float:
         return after + s["hours"] * 3600
     z = zone(tz)
     h, m = (int(x) for x in s["at"].split(":"))
+    if s["every"] == "once":   # the moment itself, even if it has passed (callers check)
+        d = dt.date.fromisoformat(s["date"])
+        return dt.datetime(d.year, d.month, d.day, h, m, tzinfo=z).timestamp()
     start = dt.datetime.fromtimestamp(after, z)
     for add in range(0, 9):
         day = (start + dt.timedelta(days=add)).date()
@@ -81,6 +91,8 @@ def describe(s: dict) -> str:
     if s["every"] == "hours":
         return "Every hour" if s["hours"] == 1 else f"Every {s['hours']} hours"
     at = s["at"]
+    if s["every"] == "once":
+        return f"Once, {dt.date.fromisoformat(s['date']).strftime('%a %d %b %Y')} at {at}"
     if s["every"] == "day":
         return f"Every day at {at}"
     if s["every"] == "weekday":
@@ -116,7 +128,7 @@ class RoutineStore:
         raise KeyError(rid)
 
     def create(self, name: str, bot: str, prompt: str, schedule: dict, tz: str | None,
-               now: float | None = None) -> dict:
+               now: float | None = None, fresh: bool = False) -> dict:
         name = " ".join(str(name).split())[:60]
         prompt = str(prompt).strip()[:4000]
         if not name or not prompt:
@@ -126,7 +138,9 @@ class RoutineStore:
         r = {"id": uuid.uuid4().hex[:8], "name": name, "bot": bot or "corvis", "prompt": prompt,
              "schedule": sched, "tz": str(zone(tz)), "enabled": True, "created": now,
              "next_run": next_run(sched, tz, now), "last_run": None, "last_status": None,
-             "conversation_id": None}
+             "conversation_id": None, "fresh": bool(fresh), "runs": []}
+        if sched["every"] == "once" and r["next_run"] <= now:
+            raise ValueError("That time has already passed. Pick a time in the future.")
         with self._lock:
             items = self.list()
             items.append(r)
@@ -145,15 +159,23 @@ class RoutineStore:
                         r[k] = str(data[k]).strip()[:4000 if k == "prompt" else 60]
                 if "enabled" in data:
                     r["enabled"] = bool(data["enabled"])
+                if "fresh" in data:
+                    r["fresh"] = bool(data["fresh"])
                 if "tz" in data:
                     r["tz"] = str(zone(data["tz"]))
                 if "schedule" in data:
                     r["schedule"] = check_schedule(data["schedule"])
                 if {"schedule", "tz", "enabled"} & set(data):
-                    r["next_run"] = next_run(r["schedule"], r["tz"], time.time() if now is None else now)
+                    t = time.time() if now is None else now
+                    r["next_run"] = next_run(r["schedule"], r["tz"], t)
+                    if r["schedule"]["every"] == "once" and r["enabled"] and r["next_run"] <= t:
+                        raise ValueError("That one-time task's moment has passed. Pick a new date and time.")
                 for k in ("conversation_id", "last_run", "last_status", "next_run"):
                     if k in data:
                         r[k] = data[k]
+                if "run" in data:   # one entry of run history: when, how it went, which chat
+                    r["runs"] = (r.get("runs") or []) + [data["run"]]
+                    r["runs"] = r["runs"][-MAX_RUNS_KEPT:]
                 self._write(items)
                 r["when"] = describe(r["schedule"])
                 return r
@@ -186,7 +208,10 @@ class Scheduler:
         for r in self.store.due(now):
             # Schedule the next one first, so a crash can't make it fire over and over.
             # If Corvis was off for a while, a missed routine runs once, not once per miss.
-            self.store.update(r["id"], {"next_run": next_run(r["schedule"], r["tz"], now), "last_run": now})
+            if r["schedule"]["every"] == "once":
+                self.store.update(r["id"], {"enabled": False, "last_run": now}, now=now - 1)
+            else:
+                self.store.update(r["id"], {"next_run": next_run(r["schedule"], r["tz"], now), "last_run": now})
             try:
                 status = self.fire(r)
             except Exception as e:  # one broken routine must not stop the others

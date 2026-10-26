@@ -215,8 +215,15 @@ class RunManager:
         bot = bot or self.bots.get(conv.get("bot"))
         # Built fresh for every message, so edits to a bot's job or the team apply at once.
         # Approvals and events always go to whichever run is current for this chat.
+        kwargs = {}
+        if conv.get("project"):   # chats inside a project get its instructions, knowledge and memory
+            from ..projects import ProjectStore
+            try:
+                kwargs["project"] = ProjectStore(data_dir(self.cfg)).get(conv["project"])
+            except KeyError:
+                pass  # the project was deleted; carry on as a normal chat
         agent = self.agent_factory(
-            conv["workspace"], self.cfg,
+            conv["workspace"], self.cfg, **kwargs,
             approver=lambda prompt: self.runs[conv_id].ask(prompt),
             on_event=lambda kind, text: self.runs[conv_id].emit(kind, text),
             emit=lambda kind, text, **extra: self.runs[conv_id].emit(kind, text, **extra),

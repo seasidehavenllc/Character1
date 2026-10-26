@@ -475,3 +475,31 @@ and deleting a blueprint always asks you first. Blueprints are stored in `data/b
 engineering estimates for spotting weak points early, not a replacement for real CAD/FEA simulation.
 The 3D engine (three.js, MIT licence) is bundled in `corvis/web/static/vendor/three/`, so it works offline.
 Turn the feature off with `blueprints: {enabled: false}` in config.yaml.
+
+## Projects, Code, Artifacts and Scheduled (new)
+
+The sidebar has the same four sections as the Claude app:
+
+- **Projects**: a project groups related chats (threads) and gives every one of them the same
+  **instructions**, **knowledge files** (text, code, Markdown, PDF, Word; upload or paste) and
+  **project memory** (Corvis saves decisions there with `save_project_memory`; you can add or
+  remove notes). Small knowledge is read in full before every answer; once it's bigger than
+  that, Corvis searches it instead (`search_project_knowledge`, `read_project_file`). He can
+  also look through the project's other chats (`search_project_chats`). Start a chat from the
+  project page, or move any chat into a project from the chip at the top of the chat. Each
+  project can have its own folder. Deleting a project deletes its chats.
+- **Code**: start a coding session on a repo folder (optionally on a fresh `corvis/...` branch).
+  The session list shows each one's repo, branch, status (working / needs your OK / idle) and
+  `+added −removed`. In the session, **Changes** opens every changed file as a diff against where
+  the session started, and you can commit from there.
+- **Artifacts**: Corvis makes web pages and mini apps, documents, code files and SVG drawings
+  with `create_artifact` / `edit_artifact` / `update_artifact`. They open in a panel beside the
+  chat as he makes them, keep every version, and collect in the Artifacts gallery (preview,
+  code view, copy, download, delete). Web pages run in a sandbox with their own origin, no
+  network and no access to Corvis or your files.
+- **Scheduled**: tasks that run once, every few hours, daily, on weekdays or weekly, for Corvis
+  or any bot. Turn them on and off, run one now, edit it, and see each run's result with a link
+  to its chat. A task can continue one chat or start a fresh chat every run.
+
+Data lives in `data/projects/`, `data/artifacts/` and `data/routines.json`. Turn artifacts off
+with `artifacts: {enabled: false}` in config.yaml.

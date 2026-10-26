@@ -251,6 +251,7 @@
         const label = document.createElement("span");
         label.textContent = c.title;
         a.appendChild(label);
+        if (window.CorvisHub) window.CorvisHub.decorateChat(a, c);
         if (c.unread) a.insertAdjacentHTML("beforeend", `<i class="unread-dot" title="New results"></i>`);
         const del = document.createElement("button");
         del.type = "button";
@@ -345,6 +346,7 @@
         : "";
     }
     el.folderChip.querySelector("svg use").setAttribute("href", c.mode === "self" ? "#i-feather" : "#i-folder");
+    if (window.CorvisHub) window.CorvisHub.header(state.conv);
   }
 
   function updateSend() {
@@ -649,6 +651,8 @@
         const step = ctx.lastStep;
         if (!step) break;
         const text = ev.text || "";
+        const made = /_artifact$/.test(step.dataset.tool || "") && text.match(/\(artifact:([a-f0-9]{10})\b/);
+        if (made) { (ctx.artifacts ||= []).includes(made[1]) || ctx.artifacts.push(made[1]); ctx.artifactsChanged = made[1]; }
         const first = (text.trim().split("\n")[0] || "(no output)").slice(0, 200);
         if (/^(ERROR|Command not run|TIMEOUT|The owner declined)/.test(text) || /^exit code [1-9]/.test(text)) {
           step.classList.add("err");
@@ -751,9 +755,9 @@
     const div = corvisShell(false, m.bot);
     const body = div.querySelector(".body");
     const events = m.events || [];
+    const ctx = {};
     if (events.length) {
       const trace = newTrace(false);
-      const ctx = {};
       for (const ev of events) applyStep(trace, ev, ctx);
       // Approvals in saved chats are already settled.
       trace.querySelectorAll(".approval:not(.settled)").forEach((c) => settleApproval(c, "denied"));
@@ -766,6 +770,7 @@
     content.className = "content";
     content.innerHTML = md.render(m.text || "");
     body.appendChild(content);
+    if (ctx.artifacts && window.CorvisHub) window.CorvisHub.cards(body, ctx.artifacts);
     if (m.status === "error" || m.status === "stopped") {
       const p = document.createElement("p");
       p.className = "msg-status" + (m.status === "error" ? " error" : "");
@@ -853,6 +858,10 @@
       live.content.innerHTML = md.render(ev.text || "");
     } else {
       applyStep(live.trace, ev, live.ctx);
+      if (live.ctx.artifactsChanged && window.CorvisHub) {
+        window.CorvisHub.cards(live.div.querySelector(".body"), live.ctx.artifacts, live.ctx.artifactsChanged);
+        live.ctx.artifactsChanged = null;
+      }
     }
     setTraceSummary(live.trace, true);
     live.working.querySelector(".working-text").textContent =
@@ -1020,6 +1029,11 @@
     state.stream = null;
     state.live = null;
     state.running = false;
+    if (window.CorvisHub && window.CorvisHub.route(location.hash)) {
+      state.conv = null;
+      renderList();
+      return;
+    }
     if (!m) {
       state.conv = null;
       state.draft = { mode: "project", workspace: state.info ? state.info.default_workspace : null, bot: state.draft.bot || LEAD };
@@ -2066,6 +2080,10 @@
     if (k) cpAct({ action: "key", key: k.dataset.key });
     if (s) cpAct({ action: "scroll", dy: Number(s.dataset.scroll) });
   });
+
+  // shared with hub.js (Projects, Code, Artifacts, Scheduled)
+  window.CorvisApp = { api, toast, navigate, refreshList, renderList, state, svg, isPhone, showSidebar, md,
+                       avatar, botById, bots, shortPath, el };
 
   // ---------- start ----------
   (async function init() {

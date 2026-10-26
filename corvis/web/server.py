@@ -234,19 +234,25 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
         manager.extra_state["computer"] = computer
 
     def fire_routine(r: dict) -> str:
-        """Start a routine's run in its own chat (made on first run, reused after)."""
-        conv = conv_or_404(r.get("conversation_id") or "")
+        """Start a routine's run in its own chat (made on first run, reused after), or in a
+        fresh chat every time when the task asks for that."""
+        conv = None if r.get("fresh") else conv_or_404(r.get("conversation_id") or "")
         if conv is None:
             ws = resolve_folder(wcfg["default_workspace"])
             ws.mkdir(parents=True, exist_ok=True)
             conv = store.create(str(ws), "project", bot=r["bot"])
             conv["routine"] = r["id"]
+            if r.get("fresh"):
+                conv["title"] = f"{r['name']} · {time.strftime('%d %b %H:%M')}"
             store.save(conv)
             routines.update(r["id"], {"conversation_id": conv["id"]})
         if manager.active(conv["id"]):
-            return "skipped: the last run was still going"
-        manager.start(conv["id"], r["prompt"], bot_id=r["bot"], routine=r)
-        return "started"
+            status = "skipped: the last run was still going"
+        else:
+            manager.start(conv["id"], r["prompt"], bot_id=r["bot"], routine=r)
+            status = "started"
+        routines.update(r["id"], {"run": {"ts": time.time(), "status": status, "conversation_id": conv["id"]}})
+        return status
 
     scheduler = Scheduler(routines, fire_routine)
 
@@ -344,6 +350,18 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
         for c in convs:
             c["running"] = bool(manager.active(c["id"]))
         return body({"conversations": convs})
+
+    def pick_workspace(raw: str | None) -> str:
+        """A project folder Corvis may work in (made if it's the default one). Raises ValueError."""
+        p = resolve_folder(raw or wcfg["default_workspace"])
+        if p == CORVIS_HOME:
+            raise ValueError("That's Corvis's own folder. Choose 'Improve Corvis' instead, "
+                             "so changes go through a safe branch with tests.")
+        if not p.exists() and p == resolve_folder(wcfg["default_workspace"]):
+            p.mkdir(parents=True, exist_ok=True)
+        if not p.is_dir():
+            raise ValueError(f"Folder not found: {p}")
+        return str(p)
 
     async def create_conversation(request: Request):
         data = await request.json() if await request.body() else {}
@@ -1150,7 +1168,10 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
         except ValueError as e:
             return error(str(e))
 
-    routes = [
+    from .hub_api import hub_routes
+    routes = hub_routes(store=store, manager=manager, data_dir=data_dir, pick_workspace=pick_workspace,
+                        public=public, routines=routines, fire_routine=fire_routine, bots=bots,
+                        owner_tz=owner_tz, lead_id=LEAD_ID) + [
         Route("/", index),
         Route("/studio", studio_page),
         Route("/blueprints", blueprints_page),

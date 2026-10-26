@@ -15,6 +15,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>try{if(localStorage.getItem("corvis-theme")==="light")document.documentElement.dataset.theme="light"}catch(_){}</script>
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/hub.css">
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -43,6 +44,14 @@
       <symbol id="i-x" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
       <symbol id="i-drive" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 12h.01M10.5 12h.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
       <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m4 17 5-5 4 4 2.5-2.5L20 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="15.5" cy="9.5" r="1.5" fill="currentColor"/></symbol>
+      <symbol id="i-projects" viewBox="0 0 24 24"><path d="M7 4h10M6 7h12M5.5 10h13l-1 9.5H6.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-artifacts" viewBox="0 0 24 24"><circle cx="7.5" cy="16" r="3.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12.5 12.5h7v8h-7ZM9 9.5a5 5 0 0 1 9.5-2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+      <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="17" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M7 8v8M17 10c0 4-10 2-10 6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 4 2.4 5 5.4.7-4 3.8 1 5.4L12 16.3 7.2 18.9l1-5.4-4-3.8 5.4-.7Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
       <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z M4 7.5 12 12l8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
       <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
@@ -74,13 +83,19 @@
       <button class="new-chat" id="new-chat" type="button">
         <svg><use href="#i-plus"/></svg><span>New chat</span>
       </button>
+      <nav class="hub-nav" aria-label="Sections">
+        <a class="hub-link" href="#/projects" data-hub="projects"><svg><use href="#i-projects"/></svg><span>Projects</span></a>
+        <a class="hub-link" href="#/code" data-hub="code"><svg><use href="#i-code"/></svg><span>Code</span></a>
+        <a class="hub-link" href="#/artifacts" data-hub="artifacts"><svg><use href="#i-artifacts"/></svg><span>Artifacts</span></a>
+        <a class="hub-link" href="#/scheduled" data-hub="scheduled"><svg><use href="#i-clock"/></svg><span>Scheduled</span><small id="scheduled-count"></small></a>
+      </nav>
       <section class="bots-section" aria-label="Bots">
         <div class="section-head">
           <h2>Bots</h2>
           <button class="icon-btn" id="bot-add" type="button" title="New bot" aria-label="New bot"><svg><use href="#i-plus"/></svg></button>
         </div>
         <ul class="bot-list" id="bot-list"></ul>
-        <button class="side-row" id="routines-open" type="button">
+        <button class="side-row" id="routines-open" type="button" hidden>
           <svg><use href="#i-clock"/></svg><span>Routines</span><small id="routines-count"></small>
         </button>
         <button class="side-row" id="computer-open" type="button" hidden>
@@ -140,6 +155,7 @@
         </button>
       </header>
 
+      <section class="hub" id="hub" hidden></section>
       <section class="thread" id="thread" aria-live="polite"></section>
       <div class="drop-hint" id="drop-hint" hidden><p>Drop files or photos to attach them</p></div>
 
@@ -163,6 +179,7 @@
         <p class="composer-note" id="composer-note"></p>
       </form>
     </main>
+    <aside class="side-panel" id="side-panel" hidden aria-label="Artifact or changes"></aside>
   </div>
 
   <dialog class="dialog" id="folder-dialog">
@@ -433,5 +450,6 @@
   <script src="/static/markdown.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/addons.js"></script>
+  <script src="/static/hub.js"></script>
 </body>
 </html>

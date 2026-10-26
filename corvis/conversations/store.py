@@ -33,7 +33,8 @@ class ConversationStore:
             raise KeyError(conv_id)
         return self.folder / f"{conv_id}.json"
 
-    def create(self, workspace: str, mode: str = "project", bot: str = "corvis") -> dict:
+    def create(self, workspace: str, mode: str = "project", bot: str = "corvis", project: str | None = None,
+               kind: str = "chat") -> dict:
         now = time.time()
         conv = {
             "id": uuid.uuid4().hex[:12],
@@ -43,6 +44,8 @@ class ConversationStore:
             "workspace": workspace,
             "mode": mode,  # "project" or "self"
             "bot": bot,    # the bot this chat is with (others can join with @Name)
+            "project": project,  # the project this chat (thread) belongs to, if any
+            "kind": kind,  # "chat", or "code" for a code session (see web/code_sessions.py)
             "messages": [],
             "llm_history": [],
         }
@@ -76,6 +79,8 @@ class ConversationStore:
             except (OSError, json.JSONDecodeError):
                 continue
             item = {k: c[k] for k in ("id", "title", "updated", "workspace", "mode")}
-            item.update(bot=c.get("bot", "corvis"), unread=bool(c.get("unread")), routine=c.get("routine"))
+            item.update(bot=c.get("bot", "corvis"), unread=bool(c.get("unread")), routine=c.get("routine"),
+                        project=c.get("project"), kind=c.get("kind", "chat"), code=c.get("code"),
+                        messages=len(c.get("messages", [])))
             out.append(item)
         return sorted(out, key=lambda c: c["updated"], reverse=True)

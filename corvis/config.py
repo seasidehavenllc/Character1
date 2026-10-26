@@ -105,6 +105,7 @@ def build_agent(
     depth: int = 0,
     emit: Callable[..., object] | None = None,
     extra_state: dict | None = None,
+    project: dict | None = None,
 ) -> CodingAgent:
     """Build one bot (the lead, Corvis, unless `bot` says otherwise) ready to work.
 
@@ -154,6 +155,7 @@ def build_agent(
     ctx.state["node_hub"] = node_hub
     ctx.state.update(bot=bot, bots=bots, depth=depth, emit=emit)
     ctx.state.update(extra_state or {})
+    ctx.state["project"] = project
     if "routines" not in ctx.state:
         from .routines import RoutineStore
         ctx.state["routines"] = RoutineStore(data_dir(cfg))
@@ -174,7 +176,7 @@ def build_agent(
             workspace, cfg, approver=lambda p: approver(f"{target['name']}: {p}"),
             auto_approve=auto_approve, llm=llm, conversation_id=conversation_id,
             conversation_attachments=conversation_attachments, node_hub=node_hub,
-            bot=target, depth=depth + 1, emit=sub_event, extra_state=extra_state)
+            bot=target, depth=depth + 1, emit=sub_event, extra_state=extra_state, project=project)
         parent = holder.get("agent")
         answer = teammate.run(f"Your teammate {bot['name']} asks:\n{request}",
                               should_stop=getattr(parent, "should_stop", lambda: False))
@@ -193,6 +195,9 @@ def build_agent(
                                  personality=str(cfg.get("personality") or ""),
                                  bot=bot, team=team, lead_name=agent_name(cfg),
                                  skills=ctx.state.get("skills") if registry.allow is None or registry.allow("use_skill") else None)
+    if project:
+        from .projects import ProjectStore
+        system += ProjectStore(data_dir(cfg)).prompt_block(project)
 
     def context() -> str:  # refreshed before every task
         text = memory.facts.block(bot["id"]) if memory else ""
