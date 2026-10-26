@@ -6,6 +6,7 @@ If you reload the page mid-run, the browser replays the events and keeps followi
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 import uuid
@@ -24,6 +25,8 @@ STORED_RESULT_CHARS = 2000
 CATCH_UP_CHARS = 6000
 EVENT_EXTRAS = ("id", "bot", "bot_name", "color", "by")
 
+
+LEARN_RE = re.compile(r"^((?:hey\s+)?corvis[,:]?\s+)?(learn|research)(?:\s+about)?\s+(.+?)[.!]?$", re.I | re.S)
 
 class Run:
     def __init__(self, conv_id: str, bot: dict | None = None):
@@ -156,6 +159,12 @@ class RunManager:
                 pass  # chat was deleted while working
             run.done = True
             run.emit("end", status)
+        brain = self.extra_state.get("brain")
+        if brain is not None and getattr(brain, "continuity", None) is not None and status != "error":
+            try:
+                brain.continuity.touch(run.conv_id)   # summarised into long-term memory once things go quiet
+            except Exception:
+                pass
 
     def forget(self, conv_id: str) -> None:
         self.runs.pop(conv_id, None)
@@ -270,8 +279,12 @@ class RunManager:
             if attachments:
                 files = AttachmentStore(data_dir(self.cfg))
                 extra = message_block([files.get(a["id"]) for a in attachments], files, self.cfg, run.emit)
+            learning = None if (conv["mode"] == "self" or run.routine) else self._learning_command(text)
             if conv["mode"] == "self":
                 reply = self._self_edit(run, text + extra)
+            elif learning:
+                reply = learning
+                run.emit("thinking", "Started a background learning session.")
             else:
                 agent = self._agent_for(conv, run.bot)
                 command = self._plugin_command(text)
@@ -303,6 +316,30 @@ class RunManager:
                 status = "error"
             if not run.abandoned:
                 self._finish(run, reply, status)
+
+    def _learning_command(self, text: str) -> str | None:
+        """'Corvis learn "Robotics"' / 'research Robotics' starts a session straight away, no model needed."""
+        brain = self.extra_state.get("brain")
+        m = LEARN_RE.match((text or "").strip())
+        if brain is None or not m:
+            return None
+        mode, raw = m.group(2).lower(), m.group(3).strip()
+        topic = raw.strip(" \"'“”")
+        quoted = raw[:1] in "\"'“" and raw[-1:] in "\"'”"
+        # Without "Corvis" or quotes, only a short topic counts ("research servo motors"), so ordinary
+        # requests like "research which servo fits my arm and tell me?" still go to the model.
+        if not topic or len(topic) > 120 or not (m.group(1) or quoted or (len(topic.split()) <= 4 and "?" not in topic)):
+            return None
+        job = brain.learn(topic, mode, by="owner")
+        if mode == "research":
+            what = (f"Starting a research session on **{job['topic']}**. I'll work through it in the background for up to "
+                    f"{job['budget']['max_minutes'] // 60} hours, reading as many as {job['budget']['max_sources']} sources, "
+                    "comparing them, following related topics, and updating what I already know.")
+        else:
+            what = (f"Starting to learn about **{job['topic']}**: I'll search, read trusted sources, compare them and "
+                    "write what I learn into the knowledge base in my own words.")
+        return (what + " Progress and the report are in Knowledge → Overview; ask me \"how's the learning going?\" "
+                f"any time. (job {job['id']})")
 
     def _plugin_command(self, text: str) -> str | None:
         """'/name words' typed by the owner runs a plugin's slash command."""

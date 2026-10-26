@@ -199,19 +199,42 @@ def build_agent(
         from .projects import ProjectStore
         system += ProjectStore(data_dir(cfg)).prompt_block(project)
 
+    brain = ctx.state.get("brain")
+    continuity = getattr(brain, "continuity", None)
+
     def context() -> str:  # refreshed before every task
         text = memory.facts.block(bot["id"]) if memory else ""
         if node_hub is not None and "pc" in (bot.get("abilities") or []):
             text += node_hub.status_line()
+        if continuity is not None and depth == 0:
+            try:
+                text += continuity.context_block()
+            except Exception:
+                pass  # memory must never block a task
         return text
 
-    if memory is None and node_hub is None:
+    if memory is None and node_hub is None and continuity is None:
         context = None  # type: ignore[assignment]
     recall = None
     if depth == 0 and memory and mcfg["auto_recall"]:
         def recall(task: str) -> tuple[str, list[str]]:
             blocks: list[str] = []
             titles: list[str] = []
+            if brain is not None:   # memory first: validated knowledge, then past conversations and projects
+                try:
+                    hits = [h for h in brain.kb.search(task, limit=3, expand=False) if h["score"] >= 4]
+                    if hits:
+                        blocks.append("\n\n[From your knowledge base — read_knowledge for the full file]\n" + "\n".join(
+                            f"- [{h['id']}] {h['title']} (confidence {h.get('confidence', 0)}%, health "
+                            f"{h['health']['score']}% {h['health']['label']}): {h.get('summary', '')}" for h in hits))
+                        titles.extend(f"knowledge: {h['title']}" for h in hits)
+                    if continuity is not None:
+                        block, found = continuity.recall(task)
+                        if block:
+                            blocks.append(block)
+                            titles.extend(found)
+                except Exception:
+                    pass
             try:
                 block, found_titles = memory.recall(task, exclude=conversation_id, limit=mcfg["recall_chats"])
                 if block: blocks.append(block)

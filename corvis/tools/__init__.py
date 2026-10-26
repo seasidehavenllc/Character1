@@ -6,13 +6,13 @@ import importlib
 import pkgutil
 import traceback
 
-from . import (addon_tools, app_tools, artifact_tools, blueprint_tools, attachment_tools, browser_tools, files, git_tools, graphify_tools, memory_tools, node_tools, pc_tools, plan,
+from . import (addon_tools, app_tools, artifact_tools, blueprint_tools, brain_tools, attachment_tools, browser_tools, files, git_tools, graphify_tools, memory_tools, node_tools, pc_tools, plan,
                project_tools, routine_tools, search, shell, team_tools, web_tools)
 from .base import Tool, ToolContext, ToolRegistry, params
 
 TOOL_MODULES = [plan, files, search, shell, git_tools, graphify_tools, memory_tools, web_tools, attachment_tools,
                 pc_tools, app_tools, node_tools, team_tools, routine_tools,
-                browser_tools, blueprint_tools, project_tools, artifact_tools, addon_tools]
+                browser_tools, blueprint_tools, project_tools, artifact_tools, brain_tools, addon_tools]
 
 
 def load_plugins(reg: ToolRegistry, ctx: ToolContext) -> list[str]:

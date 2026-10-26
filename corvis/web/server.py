@@ -228,6 +228,10 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
             return str(cfg.get("timezone") or "UTC")
 
     manager.extra_state.update(routines=routines, owner_tz=owner_tz)
+    from ..brain import shared as brain_shared
+    brain = brain_shared(cfg, data_dir, conversations=store)
+    if brain is not None:
+        manager.extra_state["brain"] = brain
     studio = CreativeStudio(data_dir, wcfg["default_workspace"], cfg)
     workspace_store = WorkspaceStore(data_dir)
     if computer is not None:
@@ -1170,7 +1174,8 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
 
     from .hub_api import hub_routes
     from .blueprint_api import blueprint_routes
-    routes = blueprint_routes(cfg, data_dir, blueprints) + hub_routes(store=store, manager=manager, data_dir=data_dir, pick_workspace=pick_workspace,
+    from .brain_api import brain_routes
+    routes = brain_routes(brain) + blueprint_routes(cfg, data_dir, blueprints) + hub_routes(store=store, manager=manager, data_dir=data_dir, pick_workspace=pick_workspace,
                         public=public, routines=routines, fire_routine=fire_routine, bots=bots,
                         owner_tz=owner_tz, lead_id=LEAD_ID) + [
         Route("/", index),
@@ -1265,10 +1270,14 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
     @contextlib.asynccontextmanager
     async def lifespan(_app):
         scheduler.start()   # routines run while Corvis is up
+        if brain is not None:
+            brain.start()   # pull from GitHub, catch up on unsummarised chats, daily upkeep
         try:
             yield
         finally:
             scheduler.stop()
+            if brain is not None:
+                await asyncio.to_thread(brain.stop)   # write the last session summaries, push
 
     app = Starlette(routes=routes, middleware=[Middleware(Guard)], lifespan=lifespan)
     app.state.extra_hosts = []
@@ -1284,6 +1293,7 @@ def create_app(cfg: dict, data_dir: Path | None = None, manager: RunManager | No
     app.state.computer = computer
     app.state.studio = studio
     app.state.workspace_store = workspace_store
+    app.state.brain = brain
     return app
 
 

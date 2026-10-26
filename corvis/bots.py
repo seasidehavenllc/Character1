@@ -33,7 +33,7 @@ ABILITIES = {
 }
 CODE_TOOLS = {"read_file", "write_file", "edit_file", "list_dir", "delete_file", "find_files", "grep",
               "run_command", "git_status", "git_diff", "git_log", "git_commit", "save_attachment"}
-WEB_TOOLS = {"web_search", "fetch_page"}
+WEB_TOOLS = {"web_search", "fetch_page", "learn_topic"}
 APP_TOOLS = {"find_app", "open_app", "close_app", "list_open_apps", "open_path", "open_url",
              "search_installable", "install_app", "download_file"}
 

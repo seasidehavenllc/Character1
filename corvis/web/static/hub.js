@@ -13,6 +13,7 @@
   const TYPE_LABEL = { html: "Web page", markdown: "Document", code: "Code", svg: "Drawing" };
   let timers = [];
   let projectNames = {};
+  const extraPages = {};   // sections added by other scripts (knowledge.js) through CorvisHub.register
 
   // ---------- helpers ----------
   function h(html) { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; }
@@ -67,14 +68,15 @@
   function route(hash) {
     stopTimers();
     if (panel.dataset.at !== hash) closePanel();   // the panel belongs to the page it was opened on
-    const m = hash.match(/^#\/(projects|code|artifacts|scheduled)(?:\/([\w-]+))?\/?$/);
-    if (!m) { setMode(false); return false; }
+    const m = hash.match(/^#\/([a-z]+)(?:\/([\w-]+))?\/?$/);
+    if (!m || !NAMES[m[1]]) { setMode(false); return false; }
     setMode(true, m[1]);
     hub.innerHTML = `<div class="hub-page"><p class="hub-loading">Loading…</p></div>`;
     hub.scrollTop = 0;
     if (A.isPhone()) A.showSidebar(false);
-    ({ projects: m[2] ? projectPage : projectsPage, code: codePage, artifacts: m[2] ? artifactPage : artifactsPage,
-      scheduled: scheduledPage })[m[1]](m[2]).catch((err) => {
+    const pages = { projects: m[2] ? projectPage : projectsPage, code: codePage, artifacts: m[2] ? artifactPage : artifactsPage,
+      scheduled: scheduledPage, ...extraPages };
+    pages[m[1]](m[2]).catch((err) => {
       hub.innerHTML = `<div class="hub-page"><p class="hub-empty">${esc(err.message)}</p></div>`;
     });
     return true;
@@ -774,5 +776,8 @@
   }
   api("/api/scheduled").then((d) => updateCount(d.tasks)).catch(() => {});
 
-  window.CorvisHub = { route, header, cards, decorateChat, openArtifact };
+  function register(name, label, page) { NAMES[name] = label; extraPages[name] = page; }
+
+  window.CorvisHub = { route, header, cards, decorateChat, openArtifact, register,
+    util: { h, ago, every, openPanel, closePanel, startChat, hub } };
 })();

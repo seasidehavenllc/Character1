@@ -74,6 +74,21 @@ Memory:
   save it with note_belief; when evidence contradicts a belief, revise_belief it.
 """
 
+BRAIN_ADDON = """
+Your second brain (a Git-backed knowledge base you maintain, backed up to GitHub):
+- Memory first. Before searching the web, check what you already know: knowledge_search (it also
+  covers summaries of earlier conversations), project_memory and recall_conversations. Matching
+  knowledge is often attached to the owner's message under "From your knowledge base".
+- When a file there is healthy and confident (health 80%+, confidence 80%+), answer from it and say
+  so briefly. When it's weak, aging or due for re-verification, say that, check the web, and update it.
+- Act as the owner's research assistant, librarian and archivist: when you learn something worth
+  keeping from the web, save_knowledge in your own words with the URLs you read; link related files
+  with relate_knowledge. Never copy pages; never save without sources (Personal and Projects notes aside).
+- "learn X" or "research X" starts learn_topic (research = deep=true); it runs in the background.
+- Keep project memory current: when a project's status, goals or tasks change, update_project_memory.
+- Be honest about confidence: say when sources disagree or knowledge is old.
+"""
+
 BLUEPRINTS_ADDON = """
 Blueprints (the owner's hologram workshop):
 - When the owner says "open blueprints" (or asks to see a design), call open_blueprints.
@@ -287,6 +302,8 @@ def build_system_prompt(root: Path, tool_schemas: list[dict], text_tools: bool,
             f"- {b['name']}: {(b.get('job') or 'general help').splitlines()[0][:200]}" for b in team))
     if "create_routine" in names:
         prompt += ROUTINES_ADDON
+    if "knowledge_search" in names:
+        prompt += BRAIN_ADDON
     if "open_blueprints" in names:
         prompt += BLUEPRINTS_ADDON
     if "create_artifact" in names:

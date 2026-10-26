@@ -277,3 +277,5 @@ button { cursor: pointer; }
 }
 .lib-head { flex-wrap: wrap; gap: 6px; }
 .lib-head button { white-space: nowrap; }
+.find-row { grid-template-columns: minmax(0, 1fr) auto; }
+.find-row .badge { grid-column: 1 / -1; justify-self: start; }

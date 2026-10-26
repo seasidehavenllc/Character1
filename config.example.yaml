@@ -57,6 +57,20 @@ memory:
   auto_recall: true      # attach relevant bits of earlier chats to each message
   recall_chats: 3        # at most this many snippets per message
 
+brain:
+  # Corvis's second brain: a Git repository of what he has learned (with sources, confidence
+  # and health scores), learning reports, daily session summaries, conversation digests and
+  # project memory. Set up the GitHub backup in the app (Knowledge > Sync); the token is kept
+  # in data/secrets, never here.
+  enabled: true
+  path: ""                       # default: data/brain
+  auto_approve_confidence: 90    # updates at least this confident apply without review (0 = always ask)
+  review_after_days: 90          # files older than this are flagged and re-verified
+  auto_maintain: true            # daily health check and re-verification
+  maintain_hour: 3               # local hour for that
+  verify_per_run: 10
+  summarize_conversations: true  # session summaries, conversation digests, project memory
+
 internet:
   # Lets Corvis search the web and read pages. Your search words go to the search
   # provider; everything else stays on this PC.

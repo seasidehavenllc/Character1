@@ -534,3 +534,55 @@ The sidebar has the same four sections as the Claude app:
 
 Data lives in `data/projects/`, `data/artifacts/` and `data/routines.json`. Turn artifacts off
 with `artifacts: {enabled: false}` in config.yaml.
+
+## The second brain: knowledge, learning and long-term memory (new)
+
+Corvis keeps a second brain: a Git repository (`data/brain/`) of plain Markdown that he
+maintains himself and backs up to a private GitHub repository. It is not a new model; it's a
+system around the model that learns, organizes, checks and remembers.
+
+```
+brain/
+├── Knowledge/Current/<Category>/<Topic>.md   what he knows (Robotics, ArtificialIntelligence, Programming,
+├── Knowledge/PendingReview/                  Engineering, Electronics, Business, Projects, Research, Personal)
+├── Knowledge/Archive/                        every replaced version and why it changed
+├── Reports/Daily, Weekly, Monthly            learning reports
+├── Memory/SessionSummaries/YYYY-MM-DD.md     what happened each day you talked
+├── Conversations/<Topic>/                    digests of important conversations
+├── Projects/<Name>.md                        status, goals, open/completed tasks, research, notes, ideas
+└── Dashboard.md                              knowledge health right now
+```
+
+- **Knowledge files** have front matter (title, topic, summary, sources, created, last_verified,
+  confidence, knowledge_health, related) and sections for key points, details, conflicting
+  information, related topics (linked both ways, so they form a graph), sources and history.
+- **Learning**: say `Corvis learn "Robotics"` (or use Knowledge → Overview). He plans subtopics,
+  searches for official docs, tutorials and public GitHub projects, ranks sources by trust,
+  reads them as data (never instructions), writes facts in his own words (never copies pages),
+  merges what several sources agree on, flags contradictions and writes or updates files.
+  `Corvis research "Robotics"` is the long version: up to 300 sources over about 3 hours,
+  following related topics outward. Sessions run in the background, one at a time.
+- **Safe updates**: when new research changes a file, the new version waits in Reviews unless
+  its confidence clears the auto-approve threshold (90 by default); approving archives the old
+  version with the reason. Unchanged knowledge is simply re-verified.
+- **Knowledge Health Score** (0-100%): source reliability 25%, number of validating sites 20%,
+  freshness 20%, consistency 15%, confidence 15%, update history 5%. Files not verified for
+  90 days lose 15 points and are queued for re-verification by the daily health check.
+  95-100 Excellent, 80-94 Healthy, 60-79 Needs Verification, 40-59 Aging, 0-39 Potentially Outdated.
+- **Memory first**: before each answer, matching knowledge files, earlier conversations and
+  projects are attached to your message, and Corvis checks `knowledge_search` before the web.
+- **Continuity**: a minute or two after each conversation (and on shutdown, and after a crash on
+  the next start) Corvis digests it: topics, decisions, goals, open tasks, discoveries,
+  preferences and tone. Each day gets a session summary and projects are updated. Ask "what did
+  we discuss about robotics last month?" and he answers from that memory.
+- **Greetings**: the welcome screen greets you from memory: how long you were away, what you
+  were working on, what he learned meanwhile. Without a model it falls back to varied,
+  memory-based lines. He never pretends to be human.
+- **GitHub backup**: create a private repository, make a fine-grained token with *Contents: read
+  and write* on that repository only, and enter both in Knowledge → Sync. Every change is a
+  commit by "Corvis"; pushes happen about 20 seconds after the last change, and edits you make
+  on GitHub are pulled in on start. The token lives in `data/secrets/` and is never shown again.
+
+Agent tools: `knowledge_search`, `read_knowledge`, `save_knowledge`, `relate_knowledge`,
+`learn_topic`, `learning_status`, `knowledge_dashboard`, `recall_conversations`,
+`project_memory`, `update_project_memory`. Turn it all off with `brain: {enabled: false}`.

@@ -55,3 +55,8 @@ This is your own source code. Rules for editing it:
   rules in `blueprint_finder.assess` (classified designs, private company CAD, nothing found) and the refusal to fetch
   weapons; always record and show where a model came from (site, licence, official or community); mesh assets are served
   as downloads with nosniff.
+- Second brain (`corvis/brain/`, `web/brain_api.py`, `tools/brain_tools.py`): learning keeps reading pages
+  through `internet.fetch` (so `check_url` still refuses private addresses) and treats page text as data;
+  knowledge is written in Corvis's own words with sources, never copied pages. Updates below the
+  auto-approve confidence wait for the owner in PendingReview, and replaced versions are always archived.
+  The brain's GitHub token stays in data/secrets/ (never config.yaml, Git or any API response).
