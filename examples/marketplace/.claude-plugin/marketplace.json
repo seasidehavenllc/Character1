@@ -1,0 +1,8 @@
+{
+  "name": "corvis-starter-market",
+  "owner": {"name": "Corvis"},
+  "plugins": [
+    {"name": "corvis-starter", "source": "./plugins/corvis-starter",
+     "description": "Code review and debugging skills, plus /review, /explain and /plan commands."}
+  ]
+}

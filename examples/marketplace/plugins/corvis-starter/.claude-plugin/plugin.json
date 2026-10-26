@@ -1,0 +1,6 @@
+{
+  "name": "corvis-starter",
+  "version": "1.0.0",
+  "description": "Code review and debugging skills, plus /review, /explain and /plan commands.",
+  "author": {"name": "Corvis"}
+}

@@ -1,0 +1,138 @@
+# Corvis configuration. Everything runs locally.
+
+# The assistant's name. Change it here and everywhere updates (prompts, console).
+name: Corvis
+
+# How Corvis talks. Leave empty for the default: calm, warm, quietly witty, British manners.
+personality: ""
+
+llm:
+  # Any OpenAI-compatible local server:
+  #   Ollama:       http://localhost:11434/v1
+  #   llama-server: http://localhost:8080/v1
+  #   LM Studio:    http://localhost:1234/v1
+  base_url: http://localhost:11434/v1
+  # Pick the strongest coding model your GPU fits (see README).
+  model: qwen2.5-coder:14b
+  api_key: local
+  temperature: 0.2
+  max_tokens: 8192
+  timeout: 900
+  # Set true if your model ignores native tool calling; Corvis then uses
+  # <tool_call>{...}</tool_call> text instead.
+  text_tool_mode: false
+  # Backup models, tried in order when the one above can't be reached (for example the hub
+  # thinking on your PC's Ollama, with a small cloud or local model as backup). Each needs its
+  # own base_url and model; put any key in an environment variable named by api_key_env.
+  fallbacks: []
+  #  - base_url: http://localhost:11434/v1
+  #    model: qwen2.5-coder:7b
+
+agent:
+  max_steps: 60            # tool calls per task before it pauses
+  max_context_chars: 200000  # ~50k tokens; lower this if your model's context is smaller
+  tool_output_chars: 12000
+
+safety:
+  # ask: safe commands (git status, tests, builds) run automatically, everything else asks you.
+  # auto: everything runs except the always-blocked list. Use with care.
+  approval: ask
+  # Extra regexes for commands that may run without asking, e.g. your engine build script:
+  extra_auto_allow: []
+  extra_block: []
+
+web:
+  # Only this PC can reach the chat app. Leave this as 127.0.0.1: phone and
+  # remote access will come through the hub, with a login.
+  host: 127.0.0.1
+  port: 8765
+  open_browser: true
+  # Where new chats work by default. You can pick another folder per chat.
+  default_workspace: ~/CorvisProjects
+
+memory:
+  # Corvis remembers across chats: he searches your saved chats and keeps facts
+  # about you (view and edit them in the Memory panel). Stored in data/ on this PC.
+  enabled: true
+  auto_recall: true      # attach relevant bits of earlier chats to each message
+  recall_chats: 3        # at most this many snippets per message
+
+internet:
+  # Lets Corvis search the web and read pages. Your search words go to the search
+  # provider; everything else stays on this PC.
+  enabled: true
+  # duckduckgo: no account needed. brave: free API key from brave.com/search/api.
+  # searxng: your own private search server (e.g. http://localhost:8888).
+  search_provider: duckduckgo
+  brave_api_key: ""
+  searxng_url: ""
+
+vision:
+  # A model that can see images, so Corvis can look at photos and screenshots you send.
+  # Coding models are usually blind. Install one with e.g.:  ollama pull qwen2.5vl:7b
+  # (or gemma3:12b), then put its name here. Leave empty and Corvis will say he can't see images.
+  model: ""
+  # Set true instead if your main model (llm.model) can see images itself.
+  main_model_sees_images: false
+
+remote:
+  # Use Corvis from your phone (iPhone or Android) or another computer.
+  # Before turning this on, set an owner password: double-click Set_Corvis_Password.bat.
+  # Then pick how your phone reaches the PC (see "Corvis on your phone" in the README):
+  #   - Same Wi-Fi only: also set web.host to 0.0.0.0
+  #   - From anywhere (recommended): Tailscale, and add your PC's Tailscale name below
+  enabled: false
+  # Addresses Corvis answers on besides this PC, e.g. my-pc.tail1234.ts.net or corvis.duckdns.org.
+  # Leave empty to allow any address (still password protected).
+  allowed_hosts: []
+
+pc_access:
+  # Let Corvis work with files anywhere on your PC, not just the project folder.
+  # Deleting (to the Recycle Bin), moving, overwriting outside the project and creating
+  # scripts outside the project always ask you first. Passwords, keys, browser data,
+  # Windows system folders and Startup folders are always off limits.
+  enabled: true
+  # Limit him to certain places, e.g. ["D:/Games", "C:/Users/you/Documents"].
+  # Empty = all your drives.
+  roots: []
+  # More folders to keep completely private, e.g. ["D:/Taxes"].
+  private: []
+
+apps:
+  # Open and close apps and games, open files and links.
+  enabled: true
+  # Install software (winget first, official sites otherwise). Always asks you first.
+  allow_installs: true
+
+voice:
+  # Talking to Corvis with the mic button.
+  #   auto:    on this PC with Whisper if installed (Install_Voice.bat), else your browser's
+  #            speech recognition (Chrome sends audio to Google; Safari to Apple)
+  #   local:   only on this PC (private; needs Install_Voice.bat)
+  #   browser: always the browser's;   off: no mic button
+  speech_to_text: auto
+  # Whisper model size: tiny, base, small, medium, large-v3 (bigger = more accurate, slower).
+  whisper_model: base
+  # cpu, cuda (NVIDIA GPU), or auto
+  device: auto
+  # Language code like en, or empty to detect automatically.
+  language: en
+  # Spoken replies use your device's voices; pick one in the app (speaker button).
+
+creative:
+  # Optional adapters for AI creative engines. Keep API keys in environment variables,
+  # never in this file. Each adapter must be implemented for the service you configure.
+  models: {}
+  # Example future adapter config (not activated by the example):
+  # models:
+  #   wan:
+  #     mode: local
+  #     endpoint: http://127.0.0.1:8188
+  #   ltx:
+  #     mode: api
+  #     endpoint: https://your-authorized-provider.example/v1
+  #     api_key_env: CORVIS_VIDEO_API_KEY
+
+# Graphify is an optional local tool. Install with `uv tool install graphifyy`.
+# Corvis discovers the `graphify` CLI automatically; no remote service or API key is required.
+integrations: {}

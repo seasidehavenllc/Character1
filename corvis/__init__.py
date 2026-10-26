@@ -1,3 +1,2 @@
-"""Corvis — a JARVIS-style AI companion with a persistent identity, memory and swappable bodies."""
-
-__version__ = "0.1.0"
+"""Corvis — local, owner-controlled assistant. Runs on your PC or as a cloud hub with your PC as a node."""
+__version__ = "1.1.0"

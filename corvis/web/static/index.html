@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Corvis</title>
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#151824">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Corvis">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#8C96FF"/>
+        <stop offset=".5" stop-color="#6FA8F5"/>
+        <stop offset="1" stop-color="#4FC3B4"/>
+      </linearGradient>
+      <symbol id="mark" viewBox="0 0 32 32">
+        <!-- Corvis's mark: a raven's head in profile -->
+        <path d="M6.5 29C4.2 22.5 4.4 14.6 8.4 10.1 11.2 7 15.6 5.9 19.4 7.3L31 13.2l-10.7 2.1c-.7 3.3-2.3 5.7-3.7 7.1l1 2.8-3-1 .3 3.4-3-1.7-1.1 3.5Z"/>
+        <circle cx="16.4" cy="11.3" r="1.55" class="mark-eye"/>
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+      <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9.5 4.5v15" stroke="currentColor" stroke-width="1.7"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-restart" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.05-4.95M19 5v4h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-memory" viewBox="0 0 24 24"><path d="M7 4.5h10.5a1.5 1.5 0 0 1 1.5 1.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7ZM7 4.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2M10.5 9h5M10.5 12.5h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-clip" viewBox="0 0 24 24"><path d="M19.5 11.5 12.4 18.6a4.6 4.6 0 0 1-6.5-6.5l7.4-7.4a3.1 3.1 0 0 1 4.4 4.4l-7.3 7.3a1.55 1.55 0 0 1-2.2-2.2l6.7-6.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M13.5 3.5H7a1.5 1.5 0 0 0-1.5 1.5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8.5Zm0 0v5h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-drive" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 12h.01M10.5 12h.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m4 17 5-5 4 4 2.5-2.5L20 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="15.5" cy="9.5" r="1.5" fill="currentColor"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-speaker-off" viewBox="0 0 24 24"><path d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m16 10 4 4M20 10l-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-signout" viewBox="0 0 24 24"><path d="M14 4.5H7A1.5 1.5 0 0 0 5.5 6v12A1.5 1.5 0 0 0 7 19.5h7M10.5 12h9M16.5 8.5 20 12l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-feather" viewBox="0 0 24 24"><path d="M19.5 4.5c-7 0-12 5-12 12v3M7.5 16.5h6c3-2 5.5-6 6-12M11 13h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="11.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 20h6M12 16v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M5 19h3.5L18.5 9a2.1 2.1 0 0 0-3-3L5.5 16Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 6v12l10-6Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+      <symbol id="i-handoff" viewBox="0 0 24 24"><path d="M4 9h12M12.5 5.5 16 9l-3.5 3.5M20 15H8M11.5 11.5 8 15l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3.5v4M15 3.5v4M7 7.5h10v3a5 5 0 0 1-10 0ZM12 15.5v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M10 4.5a2 2 0 0 1 4 0V6h4v4h-1.5a2 2 0 0 0 0 4H18v4.5H6V14h1.5a2 2 0 0 0 0-4H6V6h4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar" aria-label="Chats">
+      <div class="brand">
+        <svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>
+        <span class="brand-name">Corvis</span>
+        <button class="icon-btn sidebar-close" id="sidebar-close" type="button" aria-label="Hide chats">
+          <svg><use href="#i-sidebar"/></svg>
+        </button>
+      </div>
+      <button class="new-chat" id="new-chat" type="button">
+        <svg><use href="#i-plus"/></svg><span>New chat</span>
+      </button>
+      <section class="bots-section" aria-label="Bots">
+        <div class="section-head">
+          <h2>Bots</h2>
+          <button class="icon-btn" id="bot-add" type="button" title="New bot" aria-label="New bot"><svg><use href="#i-plus"/></svg></button>
+        </div>
+        <ul class="bot-list" id="bot-list"></ul>
+        <button class="side-row" id="routines-open" type="button">
+          <svg><use href="#i-clock"/></svg><span>Routines</span><small id="routines-count"></small>
+        </button>
+        <button class="side-row" id="computer-open" type="button" hidden>
+          <svg><use href="#i-monitor"/></svg><span>Computer</span><small>sign in to your tools</small>
+        </button>
+        <button class="side-row" id="connectors-open" type="button" hidden>
+          <svg><use href="#i-plug"/></svg><span>Connectors</span><small id="connectors-count"></small>
+        </button>
+        <button class="side-row" id="plugins-open" type="button" hidden>
+          <svg><use href="#i-puzzle"/></svg><span>Plugins</span><small id="plugins-count"></small>
+        </button>
+        <button class="side-row" id="studio-open" type="button" onclick="location.href='/studio'">
+          <svg><use href="#i-image"/></svg><span>Mission Control</span><small>creative studio</small>
+        </button>
+      </section>
+      <nav class="chat-list" id="chat-list"></nav>
+      <button class="pc-status" id="pc-status" type="button" hidden>
+        <span class="dot" aria-hidden="true"></span><span class="pc-label"></span>
+      </button>
+      <div class="sidebar-foot">
+        <button class="model-status" id="model-status" type="button">
+          <span class="dot" aria-hidden="true"></span><span class="model-label">Checking model…</span>
+        </button>
+        <button class="icon-btn" id="files-open" type="button" title="Browse files on your PC" aria-label="Files" hidden>
+          <svg><use href="#i-folder"/></svg>
+        </button>
+        <button class="icon-btn" id="memory-open" type="button" title="What Corvis remembers about you" aria-label="Memory">
+          <svg><use href="#i-memory"/></svg>
+        </button>
+        <button class="icon-btn" id="sign-out" type="button" title="Sign out of this device" aria-label="Sign out" hidden>
+          <svg><use href="#i-signout"/></svg>
+        </button>
+        <button class="icon-btn" id="restart" type="button" title="Restart Corvis (loads his latest changes)" aria-label="Restart Corvis">
+          <svg><use href="#i-restart"/></svg>
+        </button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn sidebar-open" id="sidebar-open" type="button" aria-label="Show chats">
+          <svg><use href="#i-menu"/></svg>
+        </button>
+        <h1 class="chat-title"><button id="chat-title" type="button" title="Rename chat">New chat</button></h1>
+        <button class="icon-btn voice-btn" id="voice-open" type="button" title="Voice: spoken replies and the mic" aria-label="Voice settings">
+          <svg><use href="#i-speaker-off"/></svg>
+        </button>
+        <button class="folder-chip" id="folder-chip" type="button">
+          <svg><use href="#i-folder"/></svg><span id="folder-label">Choose folder</span>
+        </button>
+      </header>
+
+      <section class="thread" id="thread" aria-live="polite"></section>
+      <div class="drop-hint" id="drop-hint" hidden><p>Drop files or photos to attach them</p></div>
+
+      <form class="composer" id="composer">
+        <div class="composer-box">
+          <div class="tray" id="tray" hidden></div>
+          <button class="icon-btn attach" id="attach" type="button" title="Attach files or photos" aria-label="Attach files or photos">
+            <svg><use href="#i-clip"/></svg>
+          </button>
+          <input type="file" id="file-input" multiple hidden>
+          <ul class="mentions" id="mentions" role="listbox" hidden></ul>
+          <ul class="mentions slash-list" id="slash-list" role="listbox" hidden></ul>
+          <textarea id="input" rows="1" placeholder="Ask Corvis to build, fix or explain something" aria-label="Message Corvis"></textarea>
+          <button class="icon-btn mic" id="mic" type="button" title="Talk to Corvis" aria-label="Talk to Corvis" hidden>
+            <svg><use href="#i-mic"/></svg>
+          </button>
+          <button class="send" id="send" type="submit" aria-label="Send" disabled>
+            <svg><use href="#i-send"/></svg>
+          </button>
+        </div>
+        <p class="composer-note" id="composer-note"></p>
+      </form>
+    </main>
+  </div>
+
+  <dialog class="dialog" id="folder-dialog">
+    <form method="dialog" id="folder-form">
+      <h2>Where should Corvis work?</h2>
+      <label class="choice">
+        <input type="radio" name="mode" value="project" checked>
+        <span>
+          <strong>A project folder</strong>
+          <small>Corvis can read and change files only inside this folder.</small>
+        </span>
+      </label>
+      <div class="folder-field" id="folder-field">
+        <input type="text" id="folder-input" spellcheck="false" autocomplete="off"
+               placeholder="C:\Games\MyGame" aria-label="Folder path">
+        <button type="button" class="btn ghost browse-btn" id="folder-browse" hidden>Browse your PC…</button>
+        <p class="hint" id="folder-hint">Paste the folder's path. In File Explorer: right-click the folder, then "Copy as path".</p>
+        <div class="recent" id="recent-folders"></div>
+      </div>
+      <label class="choice">
+        <input type="radio" name="mode" value="self">
+        <span>
+          <strong>Corvis himself</strong>
+          <small>Each request becomes a separate, tested change. Nothing is merged until you approve it.</small>
+        </span>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="folder-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="folder-ok">Use this folder</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog files-dialog" id="files-dialog" aria-labelledby="files-title">
+    <div class="files">
+      <header class="files-head">
+        <button class="icon-btn" id="files-back" type="button" aria-label="Back" hidden><svg><use href="#i-back"/></svg></button>
+        <h2 id="files-title">Files on your PC</h2>
+        <button class="icon-btn" id="files-close" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      </header>
+      <nav class="crumbs" id="files-crumbs" aria-label="Folder path"></nav>
+      <div class="files-body">
+        <ul class="file-list" id="file-list"></ul>
+        <section class="file-preview" id="file-preview" hidden></section>
+      </div>
+      <footer class="files-foot" id="files-foot">
+        <span class="hint" id="files-note"></span>
+        <button type="button" class="btn primary" id="files-use">Work in this folder</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog class="dialog voice-dialog" id="voice-dialog" aria-labelledby="voice-title">
+    <div class="dialog-body">
+      <h2 id="voice-title">Voice</h2>
+      <label class="switch-row">
+        <input type="checkbox" id="speak-toggle">
+        <span><strong>Read Corvis's replies aloud</strong>
+          <small>On the device you're using. Code stays on screen.</small></span>
+      </label>
+      <label class="field">Voice
+        <select id="voice-select"></select>
+      </label>
+      <label class="field">Speed
+        <input type="range" id="voice-rate" min="0.8" max="1.3" step="0.05" value="1">
+      </label>
+      <button type="button" class="btn" id="voice-test">Hear a sample</button>
+      <label class="switch-row">
+        <input type="checkbox" id="voice-autosend" checked>
+        <span><strong>Send what I say right away</strong>
+          <small>Off: your words go into the message box so you can check them first.</small></span>
+      </label>
+      <p class="hint" id="voice-note"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn primary" id="voice-close">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog memory-dialog" id="memory-dialog" aria-labelledby="memory-title">
+    <div class="dialog-body">
+      <h2 id="memory-title">What Corvis remembers</h2>
+      <p class="hint">Corvis keeps these facts in mind in every chat. He adds them when you tell him
+        something lasting about you, and he also searches your saved chats when they're relevant.
+        Facts a bot learned doing its job are marked; only that bot uses them.</p>
+      <ul class="facts" id="facts"></ul>
+      <form class="fact-add" id="fact-form">
+        <input type="text" id="fact-input" maxlength="500" autocomplete="off"
+               placeholder="e.g. My games are in D:\Games and I use Unreal 5" aria-label="New memory">
+        <button type="submit" class="btn">Add</button>
+      </form>
+      <div class="dialog-actions">
+        <button type="button" class="btn primary" id="memory-close">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog bot-dialog" id="bot-dialog" aria-labelledby="bot-title">
+    <form class="dialog-body" id="bot-form" method="dialog">
+      <h2 id="bot-title">New bot</h2>
+      <p class="hint">Give it a job, like a new teammate. It works on its own computer, learns as it goes,
+        and you can talk to it in any chat with <b>@Name</b>.</p>
+      <label class="field">Name
+        <input type="text" id="bot-name" maxlength="40" autocomplete="off" placeholder="Sales Outbound" required>
+      </label>
+      <label class="field">Its job
+        <textarea id="bot-job" rows="5" maxlength="4000"
+          placeholder="Find new leads in our CRM every morning and draft friendly follow-ups. Never send anything without my OK. Keep notes on who approves deals."></textarea>
+      </label>
+      <fieldset class="field abilities" id="bot-abilities"><legend>What it can use</legend></fieldset>
+      <fieldset class="field"><legend>Color</legend><div class="swatches" id="bot-colors"></div></fieldset>
+      <div class="dialog-actions">
+        <button type="button" class="btn danger ghost" id="bot-delete" hidden>Delete bot</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="bot-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="bot-save">Create bot</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog routines-dialog" id="routines-dialog" aria-labelledby="routines-title">
+    <div class="dialog-body">
+      <h2 id="routines-title">Routines</h2>
+      <p class="hint">Work your bots do on a schedule, even while your PC and phone are off. Each routine
+        posts its result in its own chat. Times are <b id="routines-tz"></b>.</p>
+      <ul class="routines" id="routines"></ul>
+      <details class="routine-new" id="routine-new">
+        <summary class="btn">New routine</summary>
+        <form id="routine-form">
+          <label class="field">Name <input type="text" id="rt-name" maxlength="60" placeholder="Morning leads" required></label>
+          <label class="field">Bot <select id="rt-bot"></select></label>
+          <label class="field">What to do each time
+            <textarea id="rt-prompt" rows="3" maxlength="4000" required
+              placeholder="Check the CRM for new leads, draft a follow-up for each, and list them for me."></textarea>
+          </label>
+          <div class="rt-when">
+            <label class="field">When
+              <select id="rt-every">
+                <option value="day">Every day</option>
+                <option value="weekday">Weekdays</option>
+                <option value="week">Every week</option>
+                <option value="hours">Every few hours</option>
+              </select>
+            </label>
+            <label class="field" id="rt-day-field" hidden>Day
+              <select id="rt-day">
+                <option value="mon">Monday</option><option value="tue">Tuesday</option><option value="wed">Wednesday</option>
+                <option value="thu">Thursday</option><option value="fri">Friday</option><option value="sat">Saturday</option>
+                <option value="sun">Sunday</option>
+              </select>
+            </label>
+            <label class="field" id="rt-at-field">At <input type="time" id="rt-at" value="08:00"></label>
+            <label class="field" id="rt-hours-field" hidden>Every <input type="number" id="rt-hours" min="1" max="168" value="4"> hours</label>
+          </div>
+          <div class="dialog-actions"><button type="submit" class="btn primary">Add routine</button></div>
+        </form>
+      </details>
+      <div class="dialog-actions">
+        <button type="button" class="btn primary" id="routines-close">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog computer-dialog" id="computer-dialog" aria-labelledby="computer-title">
+    <div class="computer">
+      <header class="files-head">
+        <h2 id="computer-title">Computer</h2>
+        <select id="cp-tab" aria-label="Which bot's tab"></select>
+        <button class="icon-btn" id="computer-close" type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      </header>
+      <form class="cp-bar" id="cp-go">
+        <button class="icon-btn" id="cp-back" type="button" aria-label="Back"><svg><use href="#i-back"/></svg></button>
+        <input type="text" id="cp-url" placeholder="Go to a site, like mail.google.com" spellcheck="false" autocomplete="off" aria-label="Address">
+        <button class="btn" type="submit">Go</button>
+      </form>
+      <div class="cp-screen" id="cp-screen">
+        <img id="cp-img" alt="The bots' computer screen. Click to click there.">
+        <p class="cp-empty" id="cp-empty">Nothing open yet. Type a site above, sign in once, and your bots stay signed in.</p>
+      </div>
+      <form class="cp-keys" id="cp-type">
+        <input type="text" id="cp-text" placeholder="Click a box on the screen, then type here" autocomplete="off" aria-label="Type on the screen">
+        <button class="btn" type="submit">Type</button>
+        <button class="btn" type="button" data-key="Enter">Enter</button>
+        <button class="btn" type="button" data-key="Tab">Tab</button>
+        <button class="btn" type="button" data-key="Backspace">⌫</button>
+        <button class="btn" type="button" data-scroll="700">↓</button>
+        <button class="btn" type="button" data-scroll="-700">↑</button>
+      </form>
+      <p class="hint cp-note">What you type goes straight to the site. Corvis never saves your passwords; the browser
+        keeps you signed in the way any browser does.</p>
+    </div>
+  </dialog>
+
+  <dialog class="dialog addons-dialog" id="connectors-dialog" aria-labelledby="connectors-title">
+    <div class="dialog-body">
+      <h2 id="connectors-title">Connectors</h2>
+      <p class="hint">Connect Corvis to your apps and services. Their tools work in every chat, and for bots
+        you give the <b>Connectors</b> ability. Anything that changes something in those apps asks you first.</p>
+      <ul class="addons" id="connector-list"></ul>
+      <details class="addon-new" id="connector-new">
+        <summary class="btn">Add connector</summary>
+        <div class="addon-new-body">
+          <h3>Directory</h3>
+          <div class="catalog" id="connector-catalog"></div>
+          <h3>Custom connector</h3>
+          <form id="connector-form" class="custom-form">
+            <div class="seg" role="radiogroup" aria-label="Connector type">
+              <label><input type="radio" name="ckind" value="http" checked> Remote (web address)</label>
+              <label><input type="radio" name="ckind" value="stdio"> Program on this PC</label>
+            </div>
+            <label class="field">Name <input type="text" id="cn-name" maxlength="60" placeholder="My CRM" required></label>
+            <div class="kind-http">
+              <label class="field">Server address <input type="text" id="cn-url" placeholder="https://example.com/mcp" spellcheck="false"></label>
+              <label class="field">Token (optional) <input type="password" id="cn-token" autocomplete="off" placeholder="Sent as: Authorization: Bearer …"></label>
+            </div>
+            <div class="kind-stdio" hidden>
+              <label class="field">Program <input type="text" id="cn-command" placeholder="npx" spellcheck="false"></label>
+              <label class="field">Arguments <input type="text" id="cn-args" placeholder="-y @scope/some-mcp-server" spellcheck="false"></label>
+              <label class="field">Settings it needs (optional, one per line)
+                <textarea id="cn-env" rows="2" spellcheck="false" placeholder="API_KEY=your-key"></textarea></label>
+            </div>
+            <p class="hint">Tokens and settings stay on this computer and are never shown again in the app.</p>
+            <div class="dialog-actions"><button type="submit" class="btn primary">Connect</button></div>
+          </form>
+        </div>
+      </details>
+      <div class="dialog-actions">
+        <button type="button" class="btn primary" id="connectors-close">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog addons-dialog" id="plugins-dialog" aria-labelledby="plugins-title">
+    <div class="dialog-body">
+      <h2 id="plugins-title">Plugins</h2>
+      <p class="hint">Plugins add skills (expert know-how Corvis loads when it fits), slash commands, connectors
+        and tools. They use the same format as Claude Code plugins.</p>
+      <ul class="addons" id="plugin-list"></ul>
+      <div class="commands-note" id="plugin-commands" hidden></div>
+      <details class="addon-new" id="plugin-new">
+        <summary class="btn">Install a plugin</summary>
+        <div class="addon-new-body">
+          <form id="plugin-form" class="inline-form">
+            <input type="text" id="pl-source" spellcheck="false" autocomplete="off"
+                   placeholder="github.com/owner/plugin, owner/repo, or a folder" aria-label="Plugin address">
+            <button type="submit" class="btn primary">Install</button>
+          </form>
+          <p class="hint">Or <button type="button" class="link-btn" id="pl-zip-btn">upload a .zip</button>.
+            <input type="file" id="pl-zip" accept=".zip,application/zip" hidden></p>
+          <h3>Marketplaces</h3>
+          <p class="hint">A marketplace is a Git repository that lists plugins to choose from.</p>
+          <div id="market-list"></div>
+          <form id="market-form" class="inline-form">
+            <input type="text" id="mk-source" spellcheck="false" autocomplete="off"
+                   placeholder="github.com/owner/marketplace" aria-label="Marketplace address">
+            <button type="submit" class="btn">Add marketplace</button>
+          </form>
+        </div>
+      </details>
+      <div class="dialog-actions">
+        <button type="button" class="btn primary" id="plugins-close">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="/static/markdown.js"></script>
+  <script src="/static/app.js"></script>
+  <script src="/static/addons.js"></script>
+</body>
+</html>

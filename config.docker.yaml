@@ -1,0 +1,44 @@
+name: Corvis
+personality: ""
+llm:
+  base_url: http://host.docker.internal:11434/v1
+  model: qwen2.5-coder:14b
+  api_key: local
+  temperature: 0.2
+  max_tokens: 8192
+  timeout: 900
+  text_tool_mode: false
+agent:
+  max_steps: 60
+  max_context_chars: 200000
+  tool_output_chars: 12000
+safety:
+  approval: ask
+  extra_auto_allow: []
+  extra_block: []
+web:
+  host: 0.0.0.0
+  port: 8765
+  open_browser: false
+  default_workspace: /workspace
+memory:
+  enabled: true
+  auto_recall: true
+  recall_chats: 3
+internet:
+  enabled: true
+  search_provider: duckduckgo
+  brave_api_key: ""
+  searxng_url: ""
+vision:
+  model: ""
+  main_model_sees_images: false
+remote:
+  enabled: false
+  allowed_hosts: []
+computer:
+  enabled: false
+integrations: {}
+creative:
+  models: {}
+data_dir: /data

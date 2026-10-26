@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sign in | Corvis</title>
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#151824">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/mark.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Corvis">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-body">
+  <main class="login">
+    <img class="login-mark" src="/static/mark.svg" alt="">
+    <h1>Corvis</h1>
+    <p>Sign in with your owner password.</p>
+    <form id="login-form">
+      <label class="sr-only" for="password">Owner password</label>
+      <input id="password" type="password" autocomplete="current-password" required
+             placeholder="Owner password" autofocus>
+      <button class="btn primary" type="submit" id="login-btn">Sign in</button>
+      <p class="hint error" id="login-error" role="alert" hidden></p>
+    </form>
+    <p class="hint">Forgot it? On the PC, double-click <b>Set_Corvis_Password.bat</b>. On a cloud
+      server, run <b>sudo corvis set-password</b>.</p>
+  </main>
+  <script>
+    (function () {
+      "use strict";
+      const form = document.getElementById("login-form");
+      const err = document.getElementById("login-error");
+      const btn = document.getElementById("login-btn");
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        btn.disabled = true;
+        err.hidden = true;
+        try {
+          const res = await fetch("/api/login", {
+            method: "POST",
+            headers: { "X-Corvis": "1", "Content-Type": "application/json" },
+            body: JSON.stringify({ password: document.getElementById("password").value }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) { location.replace("/"); return; }
+          err.textContent = data.error || "Couldn't sign in.";
+        } catch (_) {
+          err.textContent = "Can't reach Corvis. Check Tailscale is on, and that Corvis is running.";
+        }
+        err.hidden = false;
+        btn.disabled = false;
+        document.getElementById("password").select();
+      });
+      if ("serviceWorker" in navigator && window.isSecureContext) {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      }
+    })();
+  </script>
+</body>
+</html>

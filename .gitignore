@@ -1,9 +1,10 @@
 __pycache__/
 *.pyc
-.pytest_cache/
-*.egg-info/
 .venv/
-.env
+.pytest_cache/
 data/
-avatar/
-workspace/
+*.log
+node_modules/
+config.yaml
+config.yaml.bak
+.browsers/

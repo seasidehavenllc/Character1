@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#151824">
+  <title>Corvis</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; min-height: 100dvh; display: grid; place-items: center;
+      background: #151824; color: #e3e5ee; padding: 24px;
+      font: 16px/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    main { max-width: 360px; }
+    img { width: 56px; height: 56px; }
+    h1 { font-family: "Bahnschrift", system-ui, sans-serif; font-weight: 400; font-size: 30px; margin: 14px 0 6px; line-height: 1.15; }
+    p { color: #8a90a6; margin: 0 0 10px; }
+    ul { color: #8a90a6; padding-left: 20px; margin: 0 0 20px; }
+    button {
+      font: inherit; font-weight: 600; padding: 10px 18px; border: 0; border-radius: 10px;
+      background: #8c96ff; color: #10132a; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/static/icon-192.png" alt="">
+    <h1>Can't reach Corvis</h1>
+    <p>Your phone couldn't connect to Corvis. Check that:</p>
+    <ul>
+      <li>Tailscale is connected on this phone (or you're on the same Wi-Fi)</li>
+      <li>if Corvis runs on your PC: the PC is on and the Corvis window is open</li>
+      <li>if Corvis runs on your server: he's usually back within a minute after an update</li>
+    </ul>
+    <button type="button" onclick="location.replace('/')">Try again</button>
+  </main>
+</body>
+</html>

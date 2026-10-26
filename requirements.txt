@@ -1,0 +1,7 @@
+requests>=2.31
+pyyaml>=6.0
+pytest>=8.0
+starlette>=0.40
+uvicorn>=0.30
+pypdf>=4.0
+httpx2>=2.0      # needed by the web tests (Starlette's test client)
