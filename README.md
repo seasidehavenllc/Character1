@@ -569,12 +569,13 @@ brain/
   freshness 20%, consistency 15%, confidence 15%, update history 5%. Files not verified for
   90 days lose 15 points and are queued for re-verification by the daily health check.
   95-100 Excellent, 80-94 Healthy, 60-79 Needs Verification, 40-59 Aging, 0-39 Potentially Outdated.
-- **The brain view** (Knowledge → Graph): every knowledge file is a glowing neuron in the brain
-  region for its subject (Robotics in the motor cortex, AI in the occipital lobe, Personal in the
-  temporal lobe's memory, and so on), sized and lit by its health, with signals running along the
-  connections between topics. **Replay growth** plays the brain's history from the first thing
-  Corvis learned to today, with a growth curve under it; while a learning session runs, new
-  neurons sprout live.
+- **The brain view** (Knowledge → Graph): a slowly turning, holographic brain made of glowing
+  particles and fine filaments, with threads of light reaching out. Each subject is a glowing
+  cluster in a region that suits it (Robotics in the motor cortex, AI in the occipital lobe,
+  Personal in the temporal lobe's memory...). Click a cluster and it opens up into its knowledge
+  files, with their health and links to other subjects; click a file to read it. The brain fills in
+  outward from its clusters as knowledge grows: **Replay growth** plays that from the first file to
+  today, and new files sprout live while a learning session runs. Drag to turn it, scroll to zoom.
 - **Memory first**: before each answer, matching knowledge files, earlier conversations and
   projects are attached to your message, and Corvis checks `knowledge_search` before the web.
 - **Continuity**: a minute or two after each conversation (and on shutdown, and after a crash on

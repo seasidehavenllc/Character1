@@ -237,7 +237,7 @@
   // ---------- graph ----------
   async function graph(box) {
     const g = await api("/api/brain/graph");
-    window.CorvisBrainView.mount(box, g, { colorFor: catColor, catName, onOpen: showFile,
+    window.CorvisBrainView.mount(box, g, { catName, onOpen: showFile,
       load: () => api("/api/brain/graph") });
   }
 

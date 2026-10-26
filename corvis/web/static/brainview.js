@@ -1,16 +1,20 @@
-/* The knowledge graph drawn as a living brain (Knowledge → Graph).
-   Each knowledge file is a neuron in the brain region for its category; relationships are synapses
-   with signals travelling along them. A timeline replays how the brain grew, file by file, from the
-   first thing Corvis learned to today, and new knowledge sprouts live while a session runs.
-   Used by knowledge.js: CorvisBrainView.mount(box, graph, { colorFor, catName, onOpen, load }). */
+/* The knowledge base drawn as a living, holographic brain (Knowledge → Graph).
+   The brain is a slowly turning cloud of glowing particles and filaments. Each subject is a cluster
+   on it, in the region that suits it (Robotics in the motor cortex, AI in the occipital lobe...),
+   growing brighter as Corvis learns more. Click a cluster and it opens up into its knowledge files;
+   click a file to read it. A timeline replays the brain filling in from the first thing Corvis
+   learned to today, and new knowledge sprouts live while a session runs.
+   Used by knowledge.js: CorvisBrainView.mount(box, graph, { catName, onOpen, load }). */
 (function () {
   "use strict";
 
   const TAU = Math.PI * 2;
   const DAY = 864e5;
   const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const HUES = [228, 172, 32, 280, 350, 200, 120, 55, 300, 10];
+  const BASE = [[176, 118, 255], [132, 128, 255], [126, 176, 255]];   // the brain itself: violet at the front, blue behind
 
-  // ---------- small helpers ----------
+  // ---------- helpers ----------
   function rng(seed) {
     return function () {
       seed = (seed + 0x6D2B79F5) | 0;
@@ -34,127 +38,104 @@
   }
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const ease = (p) => 1 - Math.pow(1 - p, 3);
-  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function hsl(h, s, l) {   // -> [r, g, b]
+    s /= 100; l /= 100;
+    const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+  }
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-  // ---------- the brain's anatomy (side view, front to the left; coordinates 0..1) ----------
+  // ---------- anatomy (x: front -1 → back 1, y: up, z: towards you) ----------
   const REGIONS = {
-    Research: { x: 0.15, y: 0.40, name: "Prefrontal cortex" },
-    Business: { x: 0.27, y: 0.23, name: "Frontal lobe" },
-    Projects: { x: 0.29, y: 0.45, name: "Frontal lobe" },
-    Engineering: { x: 0.40, y: 0.16, name: "Premotor cortex" },
-    Robotics: { x: 0.51, y: 0.25, name: "Motor cortex" },
-    Programming: { x: 0.64, y: 0.19, name: "Parietal lobe" },
-    Electronics: { x: 0.67, y: 0.39, name: "Parietal lobe" },
-    ArtificialIntelligence: { x: 0.84, y: 0.37, name: "Occipital lobe" },
-    Personal: { x: 0.46, y: 0.61, name: "Temporal lobe · memory" },
+    Research: { p: [-0.86, 0.08], name: "Prefrontal cortex" },
+    Business: { p: [-0.52, 0.42], name: "Frontal lobe" },
+    Projects: { p: [-0.5, -0.02], name: "Frontal lobe" },
+    Engineering: { p: [-0.2, 0.62], name: "Premotor cortex" },
+    Robotics: { p: [0.06, 0.52], name: "Motor cortex" },
+    Programming: { p: [0.42, 0.5], name: "Parietal lobe" },
+    Electronics: { p: [0.42, 0.14], name: "Parietal lobe" },
+    ArtificialIntelligence: { p: [0.86, 0.12], name: "Occipital lobe" },
+    Personal: { p: [-0.12, -0.3], name: "Temporal lobe · memory" },
   };
-  const SPARE = [{ x: 0.39, y: 0.40 }, { x: 0.56, y: 0.47 }, { x: 0.76, y: 0.23 }, { x: 0.22, y: 0.57 }, { x: 0.59, y: 0.62 }];
+  const SPARE = [[-0.25, 0.22], [0.15, 0.12], [0.66, 0.4], [-0.68, -0.18], [0.28, -0.16]];
   function regionFor(cat) {
-    return REGIONS[cat] || { ...SPARE[hash(cat) % SPARE.length], name: "Association cortex" };
+    const r = REGIONS[cat] || { p: SPARE[hash(cat) % SPARE.length], name: "Association cortex" };
+    const [x, y] = r.p;
+    const z = 0.3 + 0.42 * Math.sqrt(Math.max(0, 1 - x * x - ((y - 0.12) / 0.75) ** 2));   // on the near hemisphere's surface
+    return { x, y, z, name: r.name };
   }
 
-  const OUTLINE = (() => {   // the cerebrum: a dome on top, the temporal lobe bulging below the front half
-    const pts = [];
-    for (let i = 0; i < 260; i++) {
-      const t = (i / 260) * TAU, c = Math.cos(t), s = Math.sin(t);
-      const ry = s < 0 ? 0.36 : 0.2 + 0.13 * Math.exp(-(((c + 0.1) / 0.38) ** 2));
-      const bump = 1 + 0.016 * Math.sin(t * 13) + 0.01 * Math.sin(t * 29 + 1);
-      pts.push([0.5 + 0.46 * c * bump, 0.42 + ry * s * bump]);
+  // how deep inside the brain a point is: < 1 inside; which part it belongs to
+  function shape(x, y, z) {
+    const az = Math.abs(z);
+    const ry = y >= 0.12 ? 0.66 : 0.42 + 0.22 * Math.exp(-(((x + 0.12) / 0.42) ** 2));
+    const cere = (x / 1.0) ** 2 + ((y - 0.12) / ry) ** 2 + ((az - 0.4) / 0.36) ** 2;   // two hemispheres
+    const cbl = ((x - 0.6) / 0.32) ** 2 + ((y + 0.42) / 0.2) ** 2 + (z / 0.52) ** 2;   // cerebellum
+    const tilt = x - 0.3 + (y + 0.35) * 0.18;
+    const stem = y < -0.28 && y > -0.98 ? (tilt / 0.1) ** 2 + (z / 0.1) ** 2 : 9;
+    if (az < 0.05 && y > -0.1) return { v: 9 };                                          // the fissure between hemispheres
+    if (cere <= cbl && cere <= stem) return { v: cere, part: "cerebrum" };
+    if (cbl <= stem) return { v: cbl, part: "cerebellum" };
+    return { v: stem, part: "stem" };
+  }
+  function folds(x, y, z) {   // ridged noise: the gyri and sulci
+    return Math.abs(Math.sin(7.3 * x + 2.1 * z + Math.sin(5.1 * y)) * Math.sin(6.2 * y - 1.7 * x + Math.cos(4.3 * z))
+      + 0.45 * Math.sin(12.5 * z - 4.4 * y + 3.1 * x));
+  }
+  function buildParticles(count) {
+    const r = rng(11), pts = [];
+    let guard = 0;
+    while (pts.length < count && guard++ < count * 60) {
+      const x = r() * 2.1 - 1.05, y = r() * 2 - 1, z = r() * 1.6 - 0.8;
+      const s = shape(x, y, z);
+      if (s.v > 1) continue;
+      const shell = s.part === "stem" ? s.v > 0.35 : s.v > 0.74;
+      const f = folds(x, y, z);
+      const vein = shell && f < 0.2;
+      if (!(vein || (shell && r() < 0.6) || r() < 0.05)) continue;
+      pts.push({ x, y, z, vein, part: s.part, size: vein ? 1.9 : 1.2 + r() * 0.8, tw: r() * TAU, a: 0 });
     }
     return pts;
-  })();
-  function inside(x, y) {
-    let inn = false;
-    for (let i = 0, j = OUTLINE.length - 1; i < OUTLINE.length; j = i++) {
-      const [xi, yi] = OUTLINE[i], [xj, yj] = OUTLINE[j];
-      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inn = !inn;
-    }
-    return inn;
   }
-  const SULCI = (() => {   // folds: seeded random walks that stay inside the cerebrum
-    const r = rng(7), out = [];
-    while (out.length < 78) {
-      let x = 0.08 + r() * 0.84, y = 0.08 + r() * 0.62, a = r() * TAU;
-      if (!inside(x, y)) continue;
-      const line = [[x, y]];
-      for (let k = 0; k < 6 + Math.floor(r() * 7); k++) {
-        a += (r() - 0.5) * 2.1;
-        x += Math.cos(a) * 0.02; y += Math.sin(a) * 0.018;
-        if (!inside(x, y)) break;
-        line.push([x, y]);
+  function buildMesh(pts) {   // fine filaments between nearby fold particles: the network look
+    const veins = pts.filter((p) => p.vein).slice(0, 1400), lines = [];
+    for (const p of veins) {
+      let best = [];
+      for (const q of veins) {
+        if (q === p) continue;
+        const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2 + (p.z - q.z) ** 2;
+        if (d < 0.012) { best.push([d, q]); }
       }
-      if (line.length > 3) out.push(line);
+      best.sort((a, b) => a[0] - b[0]);
+      for (const [, q] of best.slice(0, 2)) if (p.x < q.x || (p.x === q.x && p.y < q.y)) lines.push([p, q]);
+    }
+    return lines;
+  }
+  function buildFilaments(pts, n) {   // threads of light reaching out from the brain
+    const r = rng(23), shell = pts.filter((p) => p.part === "cerebrum" && p.vein), out = [];
+    for (let i = 0; i < n && shell.length; i++) {
+      const p = shell[Math.floor(r() * shell.length)];
+      const len = Math.hypot(p.x, p.y - 0.1, p.z) || 1;
+      const nx = p.x / len, ny = (p.y - 0.1) / len, nz = p.z / len;
+      const reach = 0.3 + r() * 0.4, bend = (r() - 0.5) * 0.45;
+      out.push({ a: p, c: [p.x + nx * reach * 0.5 + bend * nz, p.y + ny * reach * 0.5 + bend * 0.4, p.z + nz * reach * 0.5 - bend * nx],
+        b: [p.x + nx * reach, p.y + ny * reach + (r() - 0.5) * 0.4, p.z + nz * reach], speed: 0.05 + r() * 0.12, phase: r() });
     }
     return out;
-  })();
-  const FISSURES = [
-    [[0.53, 0.07], [0.52, 0.12], [0.535, 0.17], [0.505, 0.23], [0.515, 0.29], [0.485, 0.35], [0.47, 0.42]],   // central sulcus
-    [[0.27, 0.57], [0.38, 0.52], [0.5, 0.49], [0.6, 0.47], [0.66, 0.44]],   // lateral (Sylvian) fissure
-    [[0.86, 0.17], [0.84, 0.27], [0.86, 0.35]],                               // parieto-occipital
-  ];
-  const CEREBELLUM_FOLDS = Array.from({ length: 7 }, (_, i) => i);
-
-  function smooth(ctx, pts) {
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < pts.length - 1; i++) {
-      const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2;
-      ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
-    }
-    const last = pts[pts.length - 1];
-    ctx.lineTo(last[0], last[1]);
-  }
-  const CEREBRUM = (() => { const p = new Path2D(); p.moveTo(...OUTLINE[0]); OUTLINE.forEach((q) => p.lineTo(...q)); p.closePath(); return p; })();
-
-  // ---------- placing neurons ----------
-  function layout(nodes, edges, keep) {
-    const byCat = {};
-    nodes.forEach((n) => (byCat[n.category] = byCat[n.category] || []).push(n));
-    for (const [cat, list] of Object.entries(byCat)) {
-      const R = regionFor(cat);
-      list.sort((a, b) => (a.created || "").localeCompare(b.created || "") || a.id.localeCompare(b.id));
-      list.forEach((n, i) => {
-        n.rx = R.x; n.ry = R.y;
-        if (keep[n.id]) { n.x = keep[n.id].x; n.y = keep[n.id].y; n.fixed = true; return; }
-        const r = rng(hash(n.id));
-        const a = i * 2.39996 + r() * 0.6, d = 0.026 * Math.sqrt(i + 0.6) + r() * 0.006;
-        n.x = R.x + Math.cos(a) * d; n.y = R.y + Math.sin(a) * d * 0.85;
-      });
-    }
-    const loose = nodes.filter((n) => !n.fixed);
-    const rounds = nodes.length > 400 ? 30 : 110;
-    for (let it = 0; it < rounds && loose.length; it++) {
-      for (const a of loose) {
-        for (const b of nodes) {
-          if (a === b) continue;
-          const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
-          if (d2 < 0.0009 && d2 > 1e-9) { const d = Math.sqrt(d2), f = ((0.03 - d) * 0.3) / d; a.x += dx * f; a.y += dy * f; }
-        }
-        a.x += (a.rx - a.x) * 0.012; a.y += (a.ry - a.y) * 0.012;
-        if (!inside(a.x, a.y)) { a.x += (a.rx - a.x) * 0.25; a.y += (a.ry - a.y) * 0.25; }
-      }
-    }
-    for (const e of edges) {   // a gentle arc for each synapse, bowing away from the brain's centre
-      const mx = (e.a.x + e.b.x) / 2, my = (e.a.y + e.b.y) / 2;
-      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, len = Math.hypot(dx, dy) || 1;
-      let px = -dy / len, py = dx / len;
-      if ((mx - 0.5) * px + (my - 0.4) * py < 0) { px = -px; py = -py; }
-      e.cx = mx + px * len * 0.18; e.cy = my + py * len * 0.18;
-    }
-  }
-  function onCurve(e, t) {
-    const u = 1 - t;
-    return [u * u * e.a.x + 2 * u * t * e.cx + t * t * e.b.x, u * u * e.a.y + 2 * u * t * e.cy + t * t * e.b.y];
   }
 
   // ---------- the view ----------
   function mount(box, graph, opts) {
-    const { colorFor, catName = (c) => c, onOpen = () => {}, load } = opts;
+    const { catName = (c) => c, onOpen = () => {}, load } = opts;
     box.innerHTML = "";
     const wrap = document.createElement("div");
     wrap.className = "brain-view hub-card";
     wrap.innerHTML = `
       <div class="brain-stage"><canvas aria-label="Corvis's knowledge, drawn as a brain"></canvas>
-        <p class="brain-empty" hidden>An empty mind, ready to learn. Start a learning session and watch the first neurons appear.</p></div>
+        <div class="brain-focus" hidden><button type="button" class="brain-back">← Whole brain</button><div><b></b><small></small></div></div>
+        <p class="brain-empty" hidden>An empty mind, ready to learn. Start a learning session and watch it light up.</p></div>
       <div class="brain-time">
         <button class="btn ghost small" type="button" data-play>▶ Replay growth</button>
         <input type="range" min="0" max="1000" value="1000" aria-label="Brain as of date">
@@ -163,30 +144,52 @@
       <div class="brain-spark"><svg viewBox="0 0 400 44" preserveAspectRatio="none" aria-hidden="true"><path class="area"/><path class="line"/><line class="mark" y1="0" y2="44"/></svg></div>
       <p class="brain-stats"></p>
       <div class="k-legend"></div>
-      <p class="hint">Each glowing neuron is a knowledge file, in the brain region for its subject; brighter and bigger means healthier. Lines are connections between topics. Drag to move, scroll to zoom, double-click to reset, click a neuron to read it.</p>`;
+      <p class="hint">Each glowing cluster is a subject Corvis knows about; click one to open it up into its knowledge files, then click a file to read it. Drag to turn the brain, scroll to zoom, double-click to reset.</p>`;
     box.appendChild(wrap);
     const cv = wrap.querySelector("canvas"), ctx = cv.getContext("2d");
+    const glow = document.createElement("canvas"), gctx = glow.getContext("2d");
     const slider = wrap.querySelector("input"), playBtn = wrap.querySelector("[data-play]");
-    const svg = wrap.querySelector("svg");
+    const svg = wrap.querySelector("svg"), focusBar = wrap.querySelector(".brain-focus");
 
-    let nodes = [], edges = [], byId = {}, cats = [];
+    const small = (cv.clientWidth || box.clientWidth) < 600;
+    const particles = buildParticles(small ? 2400 : 4200);
+    const mesh = buildMesh(particles);
+    const filaments = buildFilaments(particles, 44);
+
+    let nodes = [], edges = [], byId = {}, cats = [], clusters = {}, catLinks = [];
     let t0 = today(), t1 = today();
     let cursor = Infinity, playing = null, hover = null;
-    let view = { x: 0, y: 0, k: 1 }, drag = null;
+    let cam = { yaw: -0.28, pitch: 0.1, k: 1, userAt: 0 }, drag = null;
+    let focus = null;        // {cat, start, closing}
+    let litKey = "", litOrder = [];
+
+    const colorOf = (cat) => hsl(HUES[Math.max(0, cats.indexOf(cat)) % HUES.length], 78, 68);
 
     function ingest(g, live) {
-      const keep = {};
-      nodes.forEach((n) => { keep[n.id] = { x: n.x, y: n.y }; });
-      const old = byId;
-      const now = performance.now();
+      const old = byId, now = performance.now();
       nodes = g.nodes.map((n) => ({ ...n, day: dayOf(n.created) ?? today(), phase: (hash(n.id) % 1000) / 160,
         liveBorn: old[n.id] ? old[n.id].liveBorn : (live ? now : 0) }));
       byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
-      edges = g.edges.filter((e) => byId[e.from] && byId[e.to]).map((e, i) => ({
-        a: byId[e.from], b: byId[e.to], speed: 0.12 + ((hash(e.from + e.to) % 100) / 100) * 0.28, phase: (i * 0.37) % 1 }));
+      edges = g.edges.filter((e) => byId[e.from] && byId[e.to]).map((e) => ({ a: byId[e.from], b: byId[e.to] }));
       cats = [...new Set(nodes.map((n) => n.category))].sort();
-      layout(nodes, edges, keep);
-      // birth order: by day, and within a day one after another, so a replay shows them sprouting in turn
+      clusters = {};
+      for (const c of cats) {
+        const R = regionFor(c), members = nodes.filter((n) => n.category === c).sort((a, b) => a.day - b.day || a.id.localeCompare(b.id));
+        clusters[c] = { cat: c, ...R, members, color: colorOf(c) };
+        members.forEach((n, i) => {   // a small knot of neurons around the cluster's centre
+          const r = rng(hash(n.id)), a = i * 2.39996, d = 0.022 * Math.sqrt(i + 0.5) + r() * 0.01;
+          n.x = R.x + Math.cos(a) * d; n.y = R.y + Math.sin(a) * d; n.z = R.z + (r() - 0.5) * 0.05;
+        });
+      }
+      const pairs = {};
+      for (const e of edges) {
+        if (e.a.category === e.b.category) continue;
+        const k = [e.a.category, e.b.category].sort().join("|");
+        pairs[k] = pairs[k] || { a: e.a.category, b: e.b.category, n: 0, edges: [] };
+        pairs[k].n++; pairs[k].edges.push(e);
+      }
+      catLinks = Object.values(pairs).map((l, i) => ({ ...l, speed: 0.1 + (hash(l.a + l.b) % 100) / 400, phase: (i * 0.37) % 1 }));
+      // birth order: by day, and within a day one after another
       const perDay = {};
       nodes.forEach((n) => (perDay[n.day] = perDay[n.day] || []).push(n));
       for (const list of Object.values(perDay)) {
@@ -195,14 +198,15 @@
       }
       t0 = nodes.length ? Math.min(...nodes.map((n) => n.day)) : today();
       t1 = Math.max(today(), ...nodes.map((n) => n.day + 1));
+      litKey = "";
       wrap.querySelector(".brain-empty").hidden = nodes.length > 0;
       wrap.querySelector(".k-legend").innerHTML = cats.map((c) =>
-        `<span><i style="background:${colorFor(c, cats)}"></i>${catName(c)} <small>${regionFor(c).name}</small></span>`).join("");
+        `<span><i style="background:${rgba(colorOf(c), 1)}"></i>${esc(catName(c))} <small>${esc(regionFor(c).name)}</small></span>`).join("");
+      if (focus && !clusters[focus.cat]) closeFocus();
       spark();
       stats();
     }
 
-    // how far into existence a neuron is at the current moment (0 = not yet, 1 = fully grown)
     function grown(n, now) {
       const span = Math.max(1, t1 - t0);
       const tl = cursor === Infinity ? 1 : clamp((cursor - n.born) / Math.max(0.35, span * 0.035), 0, 1);
@@ -215,27 +219,65 @@
       const shown = nodes.filter((n) => n.born <= at);
       const ids = new Set(shown.map((n) => n.id));
       const syn = edges.filter((e) => ids.has(e.a.id) && ids.has(e.b.id)).length;
-      const from = cursor === Infinity ? today() - 6 : at - 7;   // "now" means today and the 6 days before
+      const from = cursor === Infinity ? today() - 6 : at - 7;
       const week = nodes.filter((n) => n.born <= at && n.born >= from).length;
-      const regions = new Set(shown.map((n) => regionFor(n.category).name)).size;
+      const subjects = new Set(shown.map((n) => n.category)).size;
       wrap.querySelector(".brain-when").textContent = cursor === Infinity ? "Now" : fmtDay(Math.floor(Math.min(at, t1 - 1)));
-      wrap.querySelector(".brain-stats").textContent = `${shown.length} neuron${shown.length === 1 ? "" : "s"} · ${syn} connection${syn === 1 ? "" : "s"} · `
-        + `${regions} brain region${regions === 1 ? "" : "s"} active` + (week ? ` · +${week} in the ${cursor === Infinity ? "last 7 days" : "7 days before this point"}` : "");
+      wrap.querySelector(".brain-stats").textContent = `${shown.length} knowledge file${shown.length === 1 ? "" : "s"} in ${subjects} cluster${subjects === 1 ? "" : "s"} · `
+        + `${syn} connection${syn === 1 ? "" : "s"}` + (week ? ` · +${week} in the ${cursor === Infinity ? "last 7 days" : "7 days before this point"}` : "");
       const x = ((at - t0) / Math.max(1, t1 - t0)) * 400;
       const mark = svg.querySelector(".mark");
       mark.setAttribute("x1", x); mark.setAttribute("x2", x);
     }
-    function spark() {   // cumulative knowledge over time
+    function spark() {
       const span = Math.max(1, t1 - t0), total = Math.max(1, nodes.length);
-      const days = [...nodes].map((n) => n.day).sort((a, b) => a - b);
+      const days = nodes.map((n) => n.day).sort((a, b) => a - b);
       let d = "M0 44", count = 0;
-      for (const day of days) {
-        count++;
-        d += ` L${(((day - t0) / span) * 400).toFixed(1)} ${(44 - (count / total) * 40).toFixed(1)}`;
-      }
+      for (const day of days) { count++; d += ` L${(((day - t0) / span) * 400).toFixed(1)} ${(44 - (count / total) * 40).toFixed(1)}`; }
       d += ` L400 ${(44 - (count / total) * 40).toFixed(1)}`;
       svg.querySelector(".line").setAttribute("d", d);
       svg.querySelector(".area").setAttribute("d", d + " L400 44 Z");
+    }
+
+    // which particles are lit: the brain fills in outward from the clusters as knowledge grows
+    function litParticles(now) {
+      const shownCats = cats.filter((c) => clusters[c].members.some((n) => grown(n, now) > 0));
+      const key = shownCats.join();
+      if (key !== litKey) {
+        litKey = key;
+        const centres = shownCats.map((c) => clusters[c]);
+        litOrder = particles.map((p, i) => {
+          let d = 2.5;
+          for (const c of centres) d = Math.min(d, Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z));
+          p.tint = null;
+          for (const c of centres) if (Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z) < 0.26) p.tint = c.color;
+          return [d * 0.8 + (hash(i) % 1000) / 1000 * 0.9, i];
+        }).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+      }
+      const known = nodes.reduce((s, n) => s + grown(n, now), 0);
+      const frac = 0.16 + 0.84 * (1 - Math.exp(-known / 38));
+      const count = Math.round(frac * particles.length);
+      const lit = new Uint8Array(particles.length);
+      for (let i = 0; i < count; i++) lit[litOrder[i]] = 1;
+      return lit;
+    }
+
+    // ---------- camera ----------
+    let W = 0, H = 0, S = 1, CX = 0, CY = 0, cy = 1, sy = 0, cp = 1, sp = 0;
+    function setCamera(now) {
+      if (!reduceMotion && !drag && !hover && !focus && now - cam.userAt > 5000) {   // a slow sway, mostly side-on so clusters stay readable
+        cam.yaw += (-0.22 + 0.32 * Math.sin(now / 11000) - cam.yaw) * 0.004;
+      }
+      cy = Math.cos(cam.yaw); sy = Math.sin(cam.yaw); cp = Math.cos(cam.pitch); sp = Math.sin(cam.pitch);
+      W = cv.clientWidth; H = cv.clientHeight;
+      S = Math.min(W / 2.5, H / 2.15) * cam.k;
+      CX = W / 2; CY = H * 0.47;
+    }
+    function project(x, y, z) {
+      const x1 = x * cy - z * sy, z1 = x * sy + z * cy;
+      const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+      const f = 3.6 / (3.6 - z2);
+      return [CX + x1 * f * S, CY - y2 * f * S, z2, f];
     }
 
     // ---------- drawing ----------
@@ -246,146 +288,295 @@
       requestAnimationFrame(frame);
     }
     function draw(now) {
-      const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, hgt = cv.clientHeight;
-      if (!w || !hgt) return;
-      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hgt * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hgt * dpr); }
-      const light = document.documentElement.dataset.theme === "light";
-      const accent = css("--accent"), text = css("--text"), muted = css("--muted");
-      const base = Math.min(w / 1.04, hgt / 1.0), S = base * view.k;
-      const ox = (w - base) / 2 + view.x, oy = (hgt - base * 0.98) / 2 + view.y;
+      const dpr = window.devicePixelRatio || 1;
+      setCamera(now);
+      if (!W || !H) return;
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, hgt);
-      ctx.setTransform(dpr * S, 0, 0, dpr * S, dpr * ox, dpr * oy);
-      const px = 1 / S;
-      const z = clamp(base / 620, 0.5, 1.15);   // neurons shrink with the brain on small screens
-      const breathe = reduceMotion ? 0 : Math.sin(now / 2600) * 0.5 + 0.5;
+      ctx.clearRect(0, 0, W, H);
+      const fp = focus ? ease(clamp((now - focus.start) / 650, 0, 1)) * (focus.closing ? -1 : 1) + (focus.closing ? 1 : 0) : 0;
+      if (focus && focus.closing && fp <= 0.001) { focus = null; focusBar.hidden = true; }
+      const dim = 1 - 0.72 * fp;
+      const t = now / 1000;
 
-      // brainstem and cerebellum, behind the cerebrum
-      ctx.lineJoin = "round"; ctx.lineCap = "round";
-      ctx.fillStyle = light ? "rgba(77,88,207,.05)" : "rgba(140,150,255,.05)";
-      ctx.strokeStyle = accent; ctx.globalAlpha = 0.45; ctx.lineWidth = 1.4 * px;
-      ctx.beginPath();
-      ctx.moveTo(0.585, 0.6); ctx.bezierCurveTo(0.6, 0.75, 0.6, 0.86, 0.615, 0.97);
-      ctx.lineTo(0.675, 0.97); ctx.bezierCurveTo(0.67, 0.86, 0.675, 0.74, 0.67, 0.62);
-      ctx.fill(); ctx.stroke();
+      ctx.globalCompositeOperation = "lighter";
+      // the particle cloud
+      const lit = litParticles(now);
+      const buckets = {};
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        p.a += ((lit[i] ? 1 : 0) - p.a) * 0.06;
+        if (p.a < 0.02) continue;
+        const [x, y, z] = project(p.x, p.y, p.z);
+        p.sx = x; p.sy = y;
+        const depth = clamp((z + 1) / 2, 0, 1);
+        const tw = reduceMotion ? 1 : 0.75 + 0.25 * Math.sin(t * 1.7 + p.tw);
+        const alpha = Math.min(1, p.a * dim * tw * (0.35 + 0.65 * depth) * (p.vein ? 1 : 0.75) * (W < 620 ? 0.6 : 1));
+        const col = p.tint || BASE[p.x < -0.25 ? 0 : p.x < 0.35 ? 1 : 2];
+        const key = col.join() + "|" + Math.round(alpha * 12);
+        (buckets[key] = buckets[key] || { col, a: Math.max(1, Math.round(alpha * 12)) / 12, pts: [] }).pts.push([x, y, p.size * (0.7 + depth * 0.6) * (W < 620 ? 0.75 : 1)]);
+      }
+      // a soft bloom first (drawn small and blurred), then the sharp points and fold filaments on top
+      const gw = Math.max(1, Math.round(W / 3)), gh = Math.max(1, Math.round(H / 3));
+      if (glow.width !== gw || glow.height !== gh) { glow.width = gw; glow.height = gh; }
+      gctx.setTransform(1, 0, 0, 1, 0, 0);
+      gctx.clearRect(0, 0, gw, gh);
+      gctx.setTransform(1 / 3, 0, 0, 1 / 3, 0, 0);
+      gctx.globalCompositeOperation = "lighter";
+      for (const b of Object.values(buckets)) {
+        gctx.fillStyle = rgba(b.col, Math.min(1, b.a * 0.9));
+        gctx.beginPath();
+        for (const [x, y, sz] of b.pts) gctx.rect(x - sz * 1.5, y - sz * 1.5, sz * 3, sz * 3);
+        gctx.fill();
+      }
       ctx.save();
-      ctx.translate(0.765, 0.685); ctx.rotate(-0.12);
-      ctx.beginPath(); ctx.ellipse(0, 0, 0.155, 0.088, 0, 0, TAU); ctx.fill(); ctx.stroke();
-      ctx.clip();
-      ctx.globalAlpha = 0.18;
-      for (const i of CEREBELLUM_FOLDS) {
-        ctx.beginPath(); ctx.ellipse(0, 0.09, 0.17 - i * 0.004, 0.155 - i * 0.022, 0, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
-      }
+      ctx.filter = `blur(${small ? 6 : 9}px)`;
+      ctx.globalAlpha = W < 620 ? 0.5 : 0.85;
+      ctx.drawImage(glow, 0, 0, W, H);
       ctx.restore();
-
-      // the cerebrum with its folds
-      ctx.globalAlpha = 1;
-      const g = ctx.createRadialGradient(0.45, 0.35, 0.05, 0.5, 0.42, 0.6);
-      g.addColorStop(0, light ? `rgba(77,88,207,${0.1 + breathe * 0.03})` : `rgba(140,150,255,${0.13 + breathe * 0.04})`);
-      g.addColorStop(1, light ? "rgba(77,88,207,.03)" : "rgba(79,195,180,.04)");
-      ctx.fillStyle = css("--surface"); ctx.fill(CEREBRUM);
-      ctx.fillStyle = g; ctx.fill(CEREBRUM);
-      ctx.globalAlpha = 0.6; ctx.lineWidth = 1.6 * px; ctx.strokeStyle = accent; ctx.stroke(CEREBRUM);
-      ctx.save(); ctx.clip(CEREBRUM);
-      ctx.globalAlpha = light ? 0.16 : 0.13; ctx.lineWidth = 1.2 * px;
-      for (const s of SULCI) { ctx.beginPath(); smooth(ctx, s); ctx.stroke(); }
-      ctx.globalAlpha = light ? 0.24 : 0.2; ctx.lineWidth = 1.8 * px;
-      for (const f of FISSURES) { ctx.beginPath(); smooth(ctx, f); ctx.stroke(); }
-      ctx.restore();
-
-      // region names for the parts of the brain in use (drawn in screen pixels so they stay crisp)
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.globalAlpha = 0.6; ctx.fillStyle = muted; ctx.textAlign = "center";
-      ctx.font = `600 ${base < 480 ? 8.5 : 10}px ${css("--font-text")}`;
-      const seen = new Set(base < 480 ? cats.map((c) => regionFor(c).name) : []);   // too cramped on a phone: the legend names them
-      for (const c of cats) {
-        const R = regionFor(c);
-        if (seen.has(R.name) || !nodes.some((n) => n.category === c && grown(n, now) > 0)) continue;
-        seen.add(R.name);
-        ctx.fillText(R.name.toUpperCase(), ox + R.x * S, oy + (R.y - 0.085) * S);
+      for (const b of Object.values(buckets)) {
+        ctx.fillStyle = rgba(b.col, b.a);
+        ctx.beginPath();
+        for (const [x, y, sz] of b.pts) ctx.rect(x - sz / 2, y - sz / 2, sz, sz);
+        ctx.fill();
       }
-      ctx.setTransform(dpr * S, 0, 0, dpr * S, dpr * ox, dpr * oy);
-
-      // synapses and the signals running along them
-      const near = hover ? new Set([hover, ...edges.filter((e) => e.a === hover || e.b === hover).flatMap((e) => [e.a, e.b])]) : null;
-      ctx.globalCompositeOperation = light ? "source-over" : "lighter";
-      for (const e of edges) {
-        const p = Math.min(grown(e.a, now), grown(e.b, now));
-        if (p <= 0) continue;
-        const on = near && near.has(e.a) && near.has(e.b);
-        ctx.globalAlpha = (near && !on ? 0.06 : on ? 0.8 : 0.28) * p;
-        ctx.strokeStyle = on ? accent : colorFor(e.a.category, cats);
-        ctx.lineWidth = (on ? 1.8 : 1.1) * px;
-        ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y);
-        if (p < 1) {   // a new connection grows from one neuron to the other
-          const steps = 16; for (let i = 1; i <= steps; i++) { const q = onCurve(e, (i / steps) * ease(p)); ctx.lineTo(q[0], q[1]); }
-        } else ctx.quadraticCurveTo(e.cx, e.cy, e.b.x, e.b.y);
-        ctx.stroke();
-        if (!reduceMotion && p >= 1 && (!near || on)) {
-          const t = ((now / 1000) * e.speed + e.phase) % 1;
-          const [sx, sy] = onCurve(e, t);
-          ctx.globalAlpha = 0.9 * Math.sin(t * Math.PI);
-          ctx.fillStyle = light ? accent : "#ffffff";
-          ctx.beginPath(); ctx.arc(sx, sy, 1.7 * px, 0, TAU); ctx.fill();
+      ctx.lineWidth = 0.7;
+      ctx.strokeStyle = rgba([175, 165, 255], 0.34 * dim);
+      ctx.beginPath();
+      for (const [p, q] of mesh) {
+        if (p.a < 0.3 || q.a < 0.3) continue;
+        ctx.moveTo(p.sx, p.sy); ctx.lineTo(q.sx, q.sy);
+      }
+      ctx.stroke();
+      // threads reaching out, more of them as the brain grows
+      const known = nodes.filter((n) => grown(n, now) >= 1).length;
+      const reach = Math.min(filaments.length, 8 + known);
+      for (let i = 0; i < reach; i++) {
+        const f = filaments[i];
+        if (f.a.a < 0.3) continue;
+        const a = project(f.a.x, f.a.y, f.a.z), c = project(...f.c), b = project(...f.b);
+        const g = ctx.createLinearGradient(a[0], a[1], b[0], b[1]);
+        g.addColorStop(0, rgba([130, 175, 255], 0.38 * dim)); g.addColorStop(1, rgba([120, 170, 255], 0));
+        ctx.strokeStyle = g; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.quadraticCurveTo(c[0], c[1], b[0], b[1]); ctx.stroke();
+        if (!reduceMotion) {
+          const u = (t * f.speed + f.phase) % 1, v = 1 - u;
+          const x = v * v * a[0] + 2 * v * u * c[0] + u * u * b[0], y = v * v * a[1] + 2 * v * u * c[1] + u * u * b[1];
+          ctx.fillStyle = rgba([190, 220, 255], 0.8 * (1 - u) * dim);
+          ctx.beginPath(); ctx.arc(x, y, 1.5, 0, TAU); ctx.fill();
         }
       }
 
-      // neurons
-      for (const n of nodes) {
-        const p = grown(n, now);
-        if (p <= 0) continue;
-        const col = colorFor(n.category, cats);
-        const vital = 0.45 + 0.55 * (n.health / 100);
-        const twinkle = reduceMotion ? 1 : 0.82 + 0.18 * Math.sin(now / 650 + n.phase);
-        const dim = near && !near.has(n) ? 0.18 : 1;
-        const r = (3 + n.health / 22) * z * px * ease(p) * (n === hover ? 1.35 : 1);
-        ctx.globalAlpha = 0.22 * vital * twinkle * dim;
-        ctx.fillStyle = col;
-        ctx.beginPath(); ctx.arc(n.x, n.y, r * 2.7, 0, TAU); ctx.fill();
-        ctx.globalAlpha = vital * dim;
-        ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, TAU); ctx.fill();
-        ctx.globalAlpha = 0.85 * dim * twinkle;
-        ctx.fillStyle = light ? "#ffffff" : "#f4f6ff";
-        ctx.beginPath(); ctx.arc(n.x, n.y, r * 0.38, 0, TAU); ctx.fill();
-        if (p < 1) {   // birth flash
-          ctx.globalAlpha = (1 - p) * 0.9;
-          ctx.strokeStyle = col; ctx.lineWidth = 1.5 * px;
-          ctx.beginPath(); ctx.arc(n.x, n.y, r + (1 - (1 - p)) * 22 * px, 0, TAU); ctx.stroke();
+      // clusters and the pathways between them
+      const z = Math.min(1.25, Math.max(0.6, S / 230));
+      for (const c of Object.values(clusters)) {
+        const shown = c.members.filter((n) => grown(n, now) > 0);
+        c.shown = shown;
+        [c.sx, c.sy, c.sz, c.f] = project(c.x, c.y, c.z);
+        c.sr = (14 + 7 * Math.sqrt(shown.length)) * c.f * z * (W < 620 ? 0.7 : 1);
+        c.health = shown.length ? Math.round(shown.reduce((s, n) => s + n.health, 0) / shown.length) : 0;
+      }
+      for (const l of catLinks) {
+        const A = clusters[l.a], B = clusters[l.b];
+        const on = l.edges.some((e) => grown(e.a, now) >= 1 && grown(e.b, now) >= 1);
+        if (!on) continue;
+        const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2 + 0.25, mz = Math.max(A.z, B.z) + 0.35;
+        const m = project(mx, my, mz);
+        const focused = focus && (focus.cat === l.a || focus.cat === l.b);
+        const a = focus ? (focused ? 0.45 : 0.03) : 0.16 + Math.min(0.22, l.n * 0.04);
+        ctx.strokeStyle = rgba(A.color, a); ctx.lineWidth = Math.min(2.2, 0.7 + l.n * 0.25);
+        ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.quadraticCurveTo(m[0], m[1], B.sx, B.sy); ctx.stroke();
+        if (!reduceMotion && (!focus || focused)) {
+          const u = (t * l.speed + l.phase) % 1, v = 1 - u;
+          const x = v * v * A.sx + 2 * v * u * m[0] + u * u * B.sx, y = v * v * A.sy + 2 * v * u * m[1] + u * u * B.sy;
+          ctx.fillStyle = "rgba(255,255,255,.85)";
+          ctx.beginPath(); ctx.arc(x, y, 1.8, 0, TAU); ctx.fill();
+        }
+      }
+      for (const c of Object.values(clusters)) {
+        if (!c.shown.length) continue;
+        const isFocus = focus && focus.cat === c.cat;
+        const k = isFocus ? 1 - fp : 1 - 0.8 * fp;
+        if (k <= 0.01) continue;
+        const pulse = reduceMotion ? 1 : 1 + 0.06 * Math.sin(t * 2 + c.x * 3);
+        const vital = 0.5 + 0.5 * (c.health / 100);
+        const r = c.sr * pulse * (hover === c ? 1.15 : 1);
+        const g = ctx.createRadialGradient(c.sx, c.sy, 0, c.sx, c.sy, r * 2.3);
+        g.addColorStop(0, rgba(c.color, 0.5 * vital * k));
+        g.addColorStop(0.3, rgba(c.color, 0.12 * vital * k));
+        g.addColorStop(1, rgba(c.color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(c.sx, c.sy, r * 2.3, 0, TAU); ctx.fill();
+        // its neurons, a bright knot
+        for (const n of c.shown) {
+          const [x, y, , f] = project(n.x, n.y, n.z);
+          const p = grown(n, now);
+          ctx.fillStyle = rgba([255, 255, 255], 0.9 * k * p);
+          ctx.beginPath(); ctx.arc(x, y, (1.4 + n.health / 60) * f * z * ease(p), 0, TAU); ctx.fill();
+          if (p < 1) {
+            ctx.strokeStyle = rgba(c.color, (1 - p) * k); ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.arc(x, y, 4 + p * 26, 0, TAU); ctx.stroke();
+          }
         }
       }
       ctx.globalCompositeOperation = "source-over";
-
-      // names: the hovered neuron and its neighbours, or every neuron when zoomed in
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.globalAlpha = 1; ctx.fillStyle = text; ctx.font = `11.5px ${css("--font-text")}`;
-      const labelled = near ? [...near] : view.k >= 1.6 ? nodes : [];
-      for (const n of labelled) {
-        if (grown(n, now) < 1) continue;
-        const r = (3 + n.health / 22) * z;
-        ctx.fillText(n.title.length > 28 ? n.title.slice(0, 27) + "…" : n.title, ox + n.x * S, oy + n.y * S + r + 14);
+      // cluster names: biggest first; a name that would overlap another moves above its cluster, or waits
+      ctx.textAlign = "center";
+      const placed = [];
+      const free = (r) => !placed.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h);
+      const font = getComputedStyle(document.body).fontFamily, tight = W < 620;
+      for (const c of Object.values(clusters).sort((a, b) => (b.shown || []).length - (a.shown || []).length)) {
+        if (!c.shown.length || (focus && focus.cat === c.cat && fp > 0.2)) continue;
+        const front = clamp((c.sz + 0.6) / 1.2, 0.35, 1);
+        const label = tight ? `${catName(c.cat).replace("Artificial Intelligence", "AI")} · ${c.shown.length}` : catName(c.cat);
+        ctx.font = `600 ${tight ? 10.5 : 12.5}px ${font}`;
+        const lw = ctx.measureText(label).width, lx = clamp(c.sx, lw / 2 + 4, W - lw / 2 - 4);
+        const lh = tight ? 13 : 30, below = c.sy + c.sr * (tight ? 0.7 : 1) + (tight ? 12 : 16);
+        let ly = null;
+        for (const y of [below, c.sy - c.sr * (tight ? 0.7 : 1) - (tight ? 6 : 22)]) {
+          const r = { x: lx - lw / 2 - 3, y: y - 11, w: lw + 6, h: lh };
+          if (free(r)) { placed.push(r); ly = y; break; }
+        }
+        if (ly === null) continue;
+        ctx.globalAlpha = (1 - 0.75 * fp) * front;
+        ctx.fillStyle = "#eef0ff";
+        ctx.fillText(label, lx, ly);
+        if (!tight) {
+          ctx.font = `11px ${font}`;
+          ctx.fillStyle = "rgba(200,205,240,.7)";
+          ctx.fillText(`${c.shown.length} file${c.shown.length === 1 ? "" : "s"}`, lx, ly + 14);
+        }
       }
-
-      if (hover) tooltip(hover, S, ox, oy, w, light);
+      ctx.globalAlpha = 1;
+      if (focus) drawFocus(now, fp);
+      if (hover && !focus) clusterTip(hover);
     }
-    function tooltip(n, S, ox, oy, w, light) {
-      const dpr = window.devicePixelRatio || 1;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const lines = [n.title, `${catName(n.category)} · ${regionFor(n.category).name}`,
-        `health ${n.health}% · confidence ${n.confidence}%`, `learned ${n.created || "?"} · verified ${n.last_verified || "?"}`];
-      ctx.font = `12px ${css("--font-text")}`;
-      const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20;
-      let x = ox + n.x * S + 14, y = oy + n.y * S - 20;
-      if (x + tw > w - 6) x = ox + n.x * S - tw - 14;
-      ctx.globalAlpha = 0.95; ctx.fillStyle = css("--surface"); ctx.strokeStyle = css("--line"); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.roundRect(x, y, tw, 80, 8); ctx.fill(); ctx.stroke();
-      ctx.globalAlpha = 1; ctx.textAlign = "left";
+
+    // ---------- an opened cluster ----------
+    function focusLayout(c) {   // an even spiral that fills the space, so names don't collide
+      const list = c.shown, n = list.length, out = new Map();
+      const top = 58, rx = W * 0.4, ry = (H - top) * 0.4, cx = W / 2, cyy = top + (H - top) / 2;
+      list.forEach((node, i) => {
+        if (n === 1) { out.set(node, [cx, cyy]); return; }
+        const r = Math.sqrt((i + 0.6) / n), a = i * 2.39996 - Math.PI / 2;
+        out.set(node, [cx + Math.cos(a) * r * rx, cyy + Math.sin(a) * r * ry]);
+      });
+      return out;
+    }
+    function drawFocus(now, fp) {
+      const c = clusters[focus.cat];
+      if (!c || !c.shown.length) return;
+      const pos = focusLayout(c);
+      const tight = W < 620;
+      const z = tight ? 0.8 : 1;
+      const back = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.min(W, H) * 0.62);
+      back.addColorStop(0, `rgba(5,6,16,${0.82 * fp})`); back.addColorStop(0.7, `rgba(5,6,16,${0.55 * fp})`); back.addColorStop(1, "rgba(5,6,16,0)");
+      ctx.fillStyle = back; ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = "lighter";
+      // the core where the cluster sat, now opened
+      const core = [W / 2 * fp + c.sx * (1 - fp), (H / 2 + 6) * fp + c.sy * (1 - fp)];
+      const g = ctx.createRadialGradient(core[0], core[1], 0, core[0], core[1], 90 * fp + 20);
+      g.addColorStop(0, rgba(c.color, 0.35 * fp)); g.addColorStop(1, rgba(c.color, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(core[0], core[1], 90 * fp + 20, 0, TAU); ctx.fill();
+      for (const n of c.shown) {   // where each file sits now, part way from the knot to its place
+        const [x0, y0] = project(n.x, n.y, n.z);
+        const [x1, y1] = pos.get(n);
+        n.ex = x0 + (x1 - x0) * fp; n.ey = y0 + (y1 - y0) * fp;
+      }
+      // threads from the core, and links inside the cluster and out to other clusters
+      for (const n of c.shown) {
+        ctx.strokeStyle = rgba(c.color, 0.22 * fp); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(core[0], core[1]); ctx.lineTo(n.ex, n.ey); ctx.stroke();
+      }
+      for (const e of edges) {
+        const ina = e.a.category === c.cat && c.shown.includes(e.a), inb = e.b.category === c.cat && c.shown.includes(e.b);
+        if (!ina && !inb) continue;
+        const near = hover && (hover === e.a || hover === e.b);
+        if (ina && inb) {
+          ctx.strokeStyle = rgba([255, 255, 255], (near ? 0.75 : 0.35) * fp); ctx.lineWidth = near ? 1.8 : 1.1;
+          ctx.beginPath(); ctx.moveTo(e.a.ex, e.a.ey); ctx.lineTo(e.b.ex, e.b.ey); ctx.stroke();
+        } else {
+          const mine = ina ? e.a : e.b, other = clusters[(ina ? e.b : e.a).category];
+          if (!other || !other.shown.length) continue;
+          ctx.strokeStyle = rgba(other.color, (near ? 0.7 : 0.28) * fp); ctx.lineWidth = near ? 1.6 : 1;
+          ctx.setLineDash([3, 4]);
+          ctx.beginPath(); ctx.moveTo(mine.ex, mine.ey); ctx.lineTo(other.sx, other.sy); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+      // the files themselves
+      for (const n of c.shown) {
+        const r = (6 + n.health / 12) * z * (hover === n ? 1.25 : 1);
+        const vital = 0.45 + 0.55 * (n.health / 100);
+        const g2 = ctx.createRadialGradient(n.ex, n.ey, 0, n.ex, n.ey, r * 3);
+        g2.addColorStop(0, rgba(c.color, 0.6 * vital)); g2.addColorStop(1, rgba(c.color, 0));
+        ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(n.ex, n.ey, r * 3, 0, TAU); ctx.fill();
+        ctx.fillStyle = rgba(c.color, 0.9 * vital); ctx.beginPath(); ctx.arc(n.ex, n.ey, r, 0, TAU); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); ctx.arc(n.ex, n.ey, r * 0.4, 0, TAU); ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      if (fp > 0.55) {
+        ctx.globalAlpha = (fp - 0.55) / 0.45;
+        ctx.textAlign = "center";
+        const font = getComputedStyle(document.body).fontFamily;
+        for (const n of c.shown) {
+          const r = (6 + n.health / 12) * z;
+          ctx.font = `${hover === n ? 600 : 500} ${tight ? 10.5 : 12.5}px ${font}`;
+          ctx.fillStyle = "#f2f3ff";
+          const max = W < 420 ? 15 : tight ? 18 : 30;
+          const title = n.title.length > max ? n.title.slice(0, max - 1) + "…" : n.title;
+          ctx.fillText(title, n.ex, n.ey + r + 14);
+          if (tight) continue;   // health shows on hover when space is short
+          ctx.font = `${small ? 9.5 : 10.5}px ${font}`;
+          ctx.fillStyle = n.health >= 80 ? "rgba(140,230,190,.85)" : n.health >= 60 ? "rgba(240,210,130,.85)" : "rgba(250,150,140,.85)";
+          ctx.fillText(`${n.health}% health`, n.ex, n.ey + r + 28);
+        }
+        ctx.globalAlpha = 1;
+      }
+      if (hover && hover.title && fp >= 1) fileTip(hover);
+    }
+    function tipBox(x, y, lines) {
+      const font = getComputedStyle(document.body).fontFamily;
+      ctx.font = `12px ${font}`;
+      const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 22, th = 14 + lines.length * 17;
+      if (x + tw > W - 6) x = W - tw - 6;
+      if (y + th > H - 6) y = H - th - 6;
+      x = Math.max(6, x); y = Math.max(6, y);
+      ctx.fillStyle = "rgba(14,16,34,.92)"; ctx.strokeStyle = "rgba(160,170,255,.35)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(x, y, tw, th, 8); ctx.fill(); ctx.stroke();
+      ctx.textAlign = "left";
       lines.forEach((l, i) => {
-        ctx.fillStyle = i ? css("--muted") : css("--text");
-        ctx.font = `${i ? 400 : 600} 12px ${css("--font-text")}`;
-        ctx.fillText(l, x + 10, y + 20 + i * 17);
+        ctx.fillStyle = i ? "rgba(200,205,240,.8)" : "#f2f3ff";
+        ctx.font = `${i ? 400 : 600} 12px ${font}`;
+        ctx.fillText(l, x + 11, y + 20 + i * 17);
       });
       ctx.textAlign = "center";
     }
+    function clusterTip(c) {
+      tipBox(c.sx + c.sr + 10, c.sy - 30, [catName(c.cat), `${c.name} · ${c.shown.length} file${c.shown.length === 1 ? "" : "s"}`,
+        `average health ${c.health}%`, "Click to open"]);
+    }
+    function fileTip(n) {
+      tipBox(n.ex + 16, n.ey - 20, [n.title, `health ${n.health}% · confidence ${n.confidence}%`,
+        `learned ${n.created || "?"} · verified ${n.last_verified || "?"}`, "Click to read"]);
+    }
+    function openFocus(cat) {
+      const c = clusters[cat];
+      if (!c || !c.shown || !c.shown.length) return;
+      focus = { cat, start: performance.now(), closing: false };
+      focusBar.hidden = false;
+      focusBar.querySelector("b").textContent = catName(cat);
+      focusBar.querySelector("small").textContent = `${c.name} · ${c.shown.length} file${c.shown.length === 1 ? "" : "s"} · average health ${c.health}%`;
+      hover = null;
+    }
+    function closeFocus() {
+      if (!focus || focus.closing) return;
+      focus = { ...focus, start: performance.now(), closing: true };
+      hover = null;
+    }
+    focusBar.querySelector(".brain-back").addEventListener("click", closeFocus);
+    const onKey = (e) => { if (e.key === "Escape" && focus && document.body.contains(cv)) closeFocus(); };
+    document.addEventListener("keydown", onKey);
 
     // ---------- the timeline ----------
     function setCursor(v) {
@@ -395,12 +586,14 @@
     }
     slider.addEventListener("input", () => {
       playing = null; playBtn.textContent = "▶ Replay growth";
-      const v = t0 + (slider.value / 1000) * (t1 - t0);
-      setCursor(slider.value >= 1000 ? Infinity : v);
+      closeFocus();
+      setCursor(slider.value >= 1000 ? Infinity : t0 + (slider.value / 1000) * (t1 - t0));
     });
     playBtn.addEventListener("click", () => {
       if (playing) { playing = null; playBtn.textContent = "▶ Replay growth"; return; }
-      playing = { start: performance.now(), from: t0 - 0.3, dur: clamp(2500 + nodes.length * 220, 4000, 14000) };
+      closeFocus();
+      particles.forEach((p) => { p.a = 0; });
+      playing = { start: performance.now(), from: t0 - 0.3, dur: clamp(3000 + nodes.length * 200, 5000, 15000) };
       playBtn.textContent = "❚❚ Pause";
     });
     function step(now) {
@@ -410,63 +603,83 @@
     }
 
     // ---------- pointer ----------
-    function at(ev) {
-      const r = cv.getBoundingClientRect(), w = cv.clientWidth, hgt = cv.clientHeight;
-      const base = Math.min(w / 1.04, hgt / 1.0), S = base * view.k;
-      const ox = (w - base) / 2 + view.x, oy = (hgt - base * 0.98) / 2 + view.y;
-      const x = (ev.clientX - r.left - ox) / S, y = (ev.clientY - r.top - oy) / S, now = performance.now();
-      let best = null, bd = (14 / S) ** 2;
-      for (const n of nodes) {
-        if (grown(n, now) <= 0) continue;
-        const d = (n.x - x) ** 2 + (n.y - y) ** 2;
-        if (d < bd) { bd = d; best = n; }
+    function pick(ev) {
+      const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+      if (focus && !focus.closing) {
+        const c = clusters[focus.cat];
+        let best = null, bd = (small ? 24 : 20) ** 2;
+        for (const n of c.shown || []) {
+          if (n.ex === undefined) continue;
+          const d = (n.ex - x) ** 2 + (n.ey - y) ** 2;
+          if (d < bd) { bd = d; best = n; }
+        }
+        if (best) return best;
+      }
+      let best = null, bd = Infinity;
+      for (const c of Object.values(clusters)) {
+        if (!c.shown || !c.shown.length || c.sx === undefined || (focus && focus.cat === c.cat)) continue;
+        const d = (c.sx - x) ** 2 + (c.sy - y) ** 2;
+        if (d < Math.max(c.sr * 1.4, 18) ** 2 && d < bd) { bd = d; best = c; }
       }
       return best;
     }
-    cv.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false }; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener("pointerdown", (e) => {
+      drag = { x: e.clientX, y: e.clientY, yaw: cam.yaw, pitch: cam.pitch, moved: false };
+      cv.setPointerCapture(e.pointerId);
+    });
     cv.addEventListener("pointermove", (e) => {
       if (drag) {
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-        if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-        view.x = drag.vx + dx; view.y = drag.vy + dy; return;
+        if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+        if (drag.moved && !focus) {
+          cam.yaw = drag.yaw + dx * 0.008; cam.pitch = clamp(drag.pitch + dy * 0.006, -0.6, 0.7); cam.userAt = performance.now();
+        }
+        return;
       }
-      hover = at(e);
-      cv.style.cursor = hover ? "pointer" : "grab";
+      hover = pick(e);
+      cv.style.cursor = hover ? "pointer" : focus ? "default" : "grab";
     });
     cv.addEventListener("pointerleave", () => { hover = null; });
     cv.addEventListener("pointerup", (e) => {
       const moved = drag && drag.moved; drag = null;
-      if (!moved) { const n = at(e); if (n) onOpen(n.id); }
+      if (moved) return;
+      const hit = pick(e);
+      if (!hit) { if (focus) closeFocus(); return; }
+      if (hit.members) openFocus(hit.cat);
+      else onOpen(hit.id);
     });
-    cv.addEventListener("dblclick", () => { view = { x: 0, y: 0, k: 1 }; });
+    cv.addEventListener("dblclick", () => { cam = { yaw: -0.28, pitch: 0.1, k: 1, userAt: 0 }; });
     cv.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-      const w = cv.clientWidth, hgt = cv.clientHeight, base = Math.min(w / 1.04, hgt / 1.0);
-      const k = clamp(view.k * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.6, 5);
-      const ox = (w - base) / 2 + view.x, oy = (hgt - base * 0.98) / 2 + view.y;
-      view.x += (mx - ox) * (1 - k / view.k); view.y += (my - oy) * (1 - k / view.k); view.k = k;
+      cam.k = clamp(cam.k * (e.deltaY < 0 ? 1.1 : 1 / 1.1), 0.7, 2.4);
     }, { passive: false });
 
     // ---------- live growth while Corvis learns ----------
     let liveTimer = null;
-    function stopLive() { if (liveTimer) { clearInterval(liveTimer); liveTimer = null; } }
+    function stopLive() {
+      if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+      document.removeEventListener("keydown", onKey);
+    }
     if (load) {
       liveTimer = setInterval(async () => {
         if (!document.body.contains(cv)) { stopLive(); return; }
         if (document.hidden) return;
         try {
           const g = await load();
-          const ids = (gr) => gr.nodes.map((n) => n.id).sort().join() + "|" + gr.edges.length + "|" + gr.nodes.map((n) => n.health).join();
-          if (ids(g) !== ids({ nodes, edges: edges.map(() => 0) })) ingest(g, true);
+          const sig = (ns, es) => ns.map((n) => n.id + ":" + n.health).sort().join() + "|" + es;
+          if (sig(g.nodes, g.edges.length) !== sig(nodes, edges.length)) ingest(g, true);
         } catch (_) { /* try again next time */ }
       }, 8000);
     }
 
+    cv.brainState = () => ({   // positions on screen, for automated checks
+      clusters: Object.values(clusters).map((c) => ({ cat: c.cat, x: c.sx, y: c.sy, files: (c.shown || []).length })),
+      focus: focus && !focus.closing ? focus.cat : null,
+      files: focus ? (clusters[focus.cat].shown || []).map((n) => ({ id: n.id, x: n.ex, y: n.ey })) : [] });
     ingest(graph, false);
     setCursor(Infinity);
     requestAnimationFrame(frame);
   }
 
-  window.CorvisBrainView = { mount, regionFor, inside };
+  window.CorvisBrainView = { mount, regionFor, shape, buildParticles };
 })();
